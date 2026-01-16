@@ -1,0 +1,382 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - '**'  # Qualquer branch
+  pull_request:
+    branches:
+      - stable
+      - main
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # Job 1: Executar testes em qualquer branch
+  test:
+    name: Testes
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: delivery_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Cache de dependências
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pnpm-store
+            node_modules
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Configurar variáveis de ambiente
+        run: |
+          echo "DATABASE_URL=postgresql://test_user:test_password@localhost:5432/delivery_test" >> $GITHUB_ENV
+          echo "NODE_ENV=test" >> $GITHUB_ENV
+
+      - name: Gerar Prisma Client
+        run: pnpm prisma:generate
+
+      - name: Executar migrations do Prisma
+        run: pnpm prisma:push --skip-generate
+        env:
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/delivery_test
+
+      - name: Type check
+        run: pnpm tsc --noEmit
+
+      - name: Testes unitários (se configurados)
+        run: |
+          if grep -q '"test"' package.json; then
+            pnpm test
+          else
+            echo "⚠️ Scripts de teste não configurados ainda"
+          fi
+
+      - name: Testes de integração (se configurados)
+        run: |
+          if grep -q '"test:integration"' package.json; then
+            pnpm test:integration
+          else
+            echo "⚠️ Scripts de teste de integração não configurados ainda"
+          fi
+
+  # Job 2: Build do projeto (após testes passarem)
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Cache de dependências
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pnpm-store
+            node_modules
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Gerar Prisma Client
+        run: pnpm prisma:generate
+
+      - name: Build do projeto
+        run: pnpm build
+
+      - name: Upload de artefatos de build
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-dist
+          path: dist/
+          retention-days: 7
+
+  # Job 3: Merge automático para stable (apenas em branches de feature)
+  merge-to-stable:
+    name: Merge para Stable
+    runs-on: ubuntu-latest
+    needs: [test, build]
+    if: |
+      github.event_name == 'push' &&
+      github.ref != 'refs/heads/stable' &&
+      github.ref != 'refs/heads/main' &&
+      !startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Git
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+
+      - name: Verificar se branch stable existe
+        id: check-stable
+        run: |
+          if git show-ref --verify --quiet refs/heads/stable; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Criar branch stable se não existir
+        if: steps.check-stable.outputs.exists == 'false'
+        run: |
+          git checkout --orphan stable
+          git commit -m "Initial commit for stable branch"
+          git push origin stable
+
+      - name: Merge para stable
+        run: |
+          git checkout stable
+          git pull origin stable
+          git merge ${{ github.ref_name }} --no-ff -m "Merge ${{ github.ref_name }} to stable [skip ci]"
+          git push origin stable
+
+  # Job 4: Testes após merge para stable
+  test-after-stable:
+    name: Testes pós-merge Stable
+    runs-on: ubuntu-latest
+    needs: merge-to-stable
+    if: github.event_name == 'push' && github.ref == 'refs/heads/stable'
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: delivery_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Cache de dependências
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pnpm-store
+            node_modules
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Configurar variáveis de ambiente
+        run: |
+          echo "DATABASE_URL=postgresql://test_user:test_password@localhost:5432/delivery_test" >> $GITHUB_ENV
+          echo "NODE_ENV=test" >> $GITHUB_ENV
+
+      - name: Gerar Prisma Client
+        run: pnpm prisma:generate
+
+      - name: Executar migrations do Prisma
+        run: pnpm prisma:push --skip-generate
+        env:
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/delivery_test
+
+      - name: Type check
+        run: pnpm tsc --noEmit
+
+      - name: Testes unitários (se configurados)
+        run: |
+          if grep -q '"test"' package.json; then
+            pnpm test
+          else
+            echo "⚠️ Scripts de teste não configurados ainda"
+          fi
+
+      - name: Testes de integração (se configurados)
+        run: |
+          if grep -q '"test:integration"' package.json; then
+            pnpm test:integration
+          else
+            echo "⚠️ Scripts de teste de integração não configurados ainda"
+          fi
+
+  # Job 5: Merge automático para main (após testes passarem em stable)
+  merge-to-main:
+    name: Merge para Main
+    runs-on: ubuntu-latest
+    needs: test-after-stable
+    if: github.event_name == 'push' && github.ref == 'refs/heads/stable'
+    
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Git
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+
+      - name: Verificar se branch main existe
+        id: check-main
+        run: |
+          if git show-ref --verify --quiet refs/heads/main; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Criar branch main se não existir
+        if: steps.check-main.outputs.exists == 'false'
+        run: |
+          git checkout --orphan main
+          git commit -m "Initial commit for main branch"
+          git push origin main
+
+      - name: Merge para main
+        run: |
+          git checkout main
+          git pull origin main
+          git merge stable --no-ff -m "Merge stable to main [skip ci]"
+          git push origin main
+
+  # Job 6: Deploy para produção (após merge para main)
+  deploy:
+    name: Deploy para Produção
+    runs-on: ubuntu-latest
+    needs: merge-to-main
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://api.deliverycruzeiro.com
+    
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Cache de dependências
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pnpm-store
+            node_modules
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Gerar Prisma Client
+        run: pnpm prisma:generate
+
+      - name: Build para produção
+        run: pnpm build
+
+      - name: Login no Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build e push da imagem Docker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            delivery-cruzeiro/backend:latest
+            delivery-cruzeiro/backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Executar migrations em produção
+        run: |
+          echo "⚠️ Migrations devem ser executadas manualmente ou via script de deploy"
+          # Adicionar script de deploy aqui quando disponível
+
+      - name: Notificar deploy
+        uses: 8398a7/action-slack@v3
+        if: always()
+        with:
+          status: ${{ job.status }}
+          text: 'Deploy do Backend para produção: ${{ job.status }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

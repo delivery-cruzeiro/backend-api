@@ -1,0 +1,3 @@
+# Configuração para Docker build - desabilita workspaces
+enable-pre-post-scripts=false
+strict-peer-dependencies=false
