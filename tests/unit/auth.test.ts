@@ -1,330 +1,270 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import bcrypt from 'bcryptjs';
-import { register, login, logout, getMe, refreshToken } from '../../src/controllers/auth.controller.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+	login,
+	logout,
+	getMe,
+	refreshToken,
+	register,
+} from '../../src/controllers/auth.controller.js';
+import { auth } from '../../src/lib/auth.js';
 import { prisma } from '../../src/lib/prisma.js';
 
-// Mock do Prisma
 vi.mock('../../src/lib/prisma', () => ({
-  prisma: {
-    user: {
-      findUnique: vi.fn(),
-      create: vi.fn(),
-    },
-  },
+	prisma: {
+		user: {
+			findUnique: vi.fn(),
+		},
+	},
 }));
 
-// Mock do Better Auth
 vi.mock('../../src/lib/auth', () => ({
-  auth: {
-    api: {
-      signInEmail: vi.fn(),
-      signOut: vi.fn(),
-      getSession: vi.fn(),
-    },
-  },
+	auth: {
+		handler: vi.fn(),
+	},
 }));
+
+const publicUser = {
+	id: '1',
+	email: 'test@example.com',
+	name: 'Test User',
+	phone: '11999999999',
+	avatar: null,
+	role: 'CLIENT',
+	isActive: true,
+	emailVerified: false,
+	createdAt: new Date(),
+	updatedAt: new Date(),
+};
+
+function authResponse(body: Record<string, unknown>, init?: ResponseInit) {
+	return new Response(JSON.stringify(body), {
+		status: 200,
+		headers: {
+			'content-type': 'application/json',
+			'set-cookie': 'delivery-cruzeiro.session_token=test; HttpOnly',
+		},
+		...init,
+	});
+}
 
 describe('Auth Controller', () => {
-  let mockRequest: any;
-  let mockReply: any;
+	let mockRequest: any;
+	let mockReply: any;
 
-  beforeEach(() => {
-    mockRequest = {
-      body: {},
-      headers: {},
-    };
+	beforeEach(() => {
+		mockRequest = {
+			body: {},
+			headers: {},
+			log: {
+				error: vi.fn(),
+			},
+		};
 
-    mockReply = {
-      status: vi.fn().mockReturnThis(),
-      send: vi.fn().mockReturnThis(),
-    };
+		mockReply = {
+			header: vi.fn().mockReturnThis(),
+			status: vi.fn().mockReturnThis(),
+			send: vi.fn().mockReturnThis(),
+		};
 
-    vi.clearAllMocks();
-  });
+		vi.clearAllMocks();
+	});
 
-  describe('register', () => {
-    it('deve registrar um novo usuário com sucesso', async () => {
-      const userData = {
-        email: 'test@example.com',
-        password: 'password123',
-        name: 'Test User',
-        phone: '11999999999',
-      };
+	describe('register', () => {
+		it('registra com Better Auth e retorna usuario publico', async () => {
+			mockRequest.body = {
+				email: publicUser.email,
+				password: 'password123',
+				name: publicUser.name,
+				phone: publicUser.phone,
+			};
 
-      mockRequest.body = userData;
+			(prisma.user.findUnique as any)
+				.mockResolvedValueOnce(null)
+				.mockResolvedValueOnce(publicUser);
+			(auth.handler as any).mockResolvedValue(authResponse({ user: { id: publicUser.id } }));
 
-      (prisma.user.findUnique as any).mockResolvedValue(null);
-      (prisma.user.create as any).mockResolvedValue({
-        id: '1',
-        email: userData.email,
-        name: userData.name,
-        phone: userData.phone,
-        role: 'CLIENT',
-        isActive: true,
-        emailVerified: null,
-        createdAt: new Date(),
-      });
+			await register(mockRequest, mockReply);
 
-      await register(mockRequest, mockReply);
+			expect(auth.handler).toHaveBeenCalledWith(expect.any(Request));
+			expect(mockReply.status).toHaveBeenCalledWith(201);
+			expect(mockReply.send).toHaveBeenCalledWith({
+				message: 'Usuario criado com sucesso',
+				user: publicUser,
+				session: null,
+			});
+		});
 
-      expect(prisma.user.findUnique).toHaveBeenCalledWith({
-        where: { email: userData.email },
-      });
+		it('retorna erro se email ja existe', async () => {
+			mockRequest.body = {
+				email: publicUser.email,
+				password: 'password123',
+				name: publicUser.name,
+			};
 
-      expect(mockReply.status).toHaveBeenCalledWith(201);
-      expect(mockReply.send).toHaveBeenCalledWith({
-        message: 'Usuário criado com sucesso',
-        user: expect.objectContaining({
-          email: userData.email,
-          name: userData.name,
-        }),
-      });
-    });
+			(prisma.user.findUnique as any).mockResolvedValue({ id: publicUser.id });
 
-    it('deve retornar erro se email já existe', async () => {
-      const userData = {
-        email: 'existing@example.com',
-        password: 'password123',
-        name: 'Test User',
-      };
+			await register(mockRequest, mockReply);
 
-      mockRequest.body = userData;
+			expect(auth.handler).not.toHaveBeenCalled();
+			expect(mockReply.status).toHaveBeenCalledWith(400);
+			expect(mockReply.send).toHaveBeenCalledWith({
+				error: 'Email ja cadastrado',
+			});
+		});
+	});
 
-      (prisma.user.findUnique as any).mockResolvedValue({
-        id: '1',
-        email: userData.email,
-      });
+	describe('login', () => {
+		it('cria sessao via Better Auth com credenciais validas', async () => {
+			mockRequest.body = {
+				email: publicUser.email,
+				password: 'password123',
+			};
 
-      await register(mockRequest, mockReply);
+			(prisma.user.findUnique as any)
+				.mockResolvedValueOnce({ id: publicUser.id, isActive: true })
+				.mockResolvedValueOnce(publicUser);
+			(auth.handler as any).mockResolvedValue(authResponse({ user: { id: publicUser.id } }));
 
-      expect(mockReply.status).toHaveBeenCalledWith(400);
-      expect(mockReply.send).toHaveBeenCalledWith({
-        error: 'Email já cadastrado',
-      });
-    });
+			await login(mockRequest, mockReply);
 
-    it('deve fazer hash da senha antes de salvar', async () => {
-      const userData = {
-        email: 'test@example.com',
-        password: 'password123',
-        name: 'Test User',
-      };
+			expect(auth.handler).toHaveBeenCalledWith(expect.any(Request));
+			expect(mockReply.send).toHaveBeenCalledWith({
+				message: 'Login realizado com sucesso',
+				user: publicUser,
+				session: null,
+			});
+		});
 
-      mockRequest.body = userData;
+		it('retorna erro se usuario nao existe', async () => {
+			mockRequest.body = {
+				email: 'nonexistent@example.com',
+				password: 'password123',
+			};
 
-      (prisma.user.findUnique as any).mockResolvedValue(null);
-      (prisma.user.create as any).mockResolvedValue({
-        id: '1',
-        email: userData.email,
-        name: userData.name,
-      });
+			(prisma.user.findUnique as any).mockResolvedValue(null);
 
-      const bcryptHashSpy = vi.spyOn(bcrypt, 'hash');
+			await login(mockRequest, mockReply);
 
-      await register(mockRequest, mockReply);
+			expect(auth.handler).not.toHaveBeenCalled();
+			expect(mockReply.status).toHaveBeenCalledWith(401);
+			expect(mockReply.send).toHaveBeenCalledWith({
+				error: 'Credenciais invalidas',
+			});
+		});
 
-      expect(bcryptHashSpy).toHaveBeenCalledWith(userData.password, 10);
-    });
-  });
+		it('retorna erro se Better Auth rejeitar a senha', async () => {
+			mockRequest.body = {
+				email: publicUser.email,
+				password: 'wrongpassword',
+			};
 
-  describe('login', () => {
-    it('deve fazer login com credenciais válidas', async () => {
-      const loginData = {
-        email: 'test@example.com',
-        password: 'password123',
-      };
+			(prisma.user.findUnique as any).mockResolvedValue({
+				id: publicUser.id,
+				isActive: true,
+			});
+			(auth.handler as any).mockResolvedValue(
+				authResponse({ message: 'Credenciais invalidas' }, { status: 401 })
+			);
 
-      mockRequest.body = loginData;
+			await login(mockRequest, mockReply);
 
-      const hashedPassword = await bcrypt.hash(loginData.password, 10);
+			expect(mockReply.status).toHaveBeenCalledWith(401);
+			expect(mockReply.send).toHaveBeenCalledWith({
+				error: 'Credenciais invalidas',
+			});
+		});
 
-      (prisma.user.findUnique as any).mockResolvedValue({
-        id: '1',
-        email: loginData.email,
-        password: hashedPassword,
-        name: 'Test User',
-        role: 'CLIENT',
-        isActive: true,
-        emailVerified: null,
-      });
+		it('retorna erro se usuario esta desativado', async () => {
+			mockRequest.body = {
+				email: publicUser.email,
+				password: 'password123',
+			};
 
-      const { auth } = await import('../../src/lib/auth');
-      (auth.api.signInEmail as any).mockResolvedValue({
-        token: 'test-token',
-        expiresAt: new Date(),
-      });
+			(prisma.user.findUnique as any).mockResolvedValue({
+				id: publicUser.id,
+				isActive: false,
+			});
 
-      await login(mockRequest, mockReply);
+			await login(mockRequest, mockReply);
 
-      expect(prisma.user.findUnique).toHaveBeenCalledWith({
-        where: { email: loginData.email },
-      });
+			expect(auth.handler).not.toHaveBeenCalled();
+			expect(mockReply.status).toHaveBeenCalledWith(403);
+			expect(mockReply.send).toHaveBeenCalledWith({
+				error: 'Usuario desativado',
+			});
+		});
+	});
 
-      expect(mockReply.send).toHaveBeenCalledWith({
-        message: 'Login realizado com sucesso',
-        user: expect.objectContaining({
-          email: loginData.email,
-        }),
-        session: expect.any(Object),
-      });
-    });
+	describe('logout', () => {
+		it('encerra a sessao com Better Auth', async () => {
+			(auth.handler as any).mockResolvedValue(authResponse({ success: true }));
 
-    it('deve retornar erro se usuário não existe', async () => {
-      const loginData = {
-        email: 'nonexistent@example.com',
-        password: 'password123',
-      };
+			await logout(mockRequest, mockReply);
 
-      mockRequest.body = loginData;
+			expect(auth.handler).toHaveBeenCalledWith(expect.any(Request));
+			expect(mockReply.send).toHaveBeenCalledWith({
+				message: 'Logout realizado com sucesso',
+			});
+		});
+	});
 
-      (prisma.user.findUnique as any).mockResolvedValue(null);
+	describe('getMe', () => {
+		it('retorna usuario autenticado', async () => {
+			(auth.handler as any).mockResolvedValue(
+				authResponse({
+					user: { id: publicUser.id },
+					session: { expiresAt: new Date().toISOString() },
+				})
+			);
+			(prisma.user.findUnique as any).mockResolvedValue(publicUser);
 
-      await login(mockRequest, mockReply);
+			await getMe(mockRequest, mockReply);
 
-      expect(mockReply.status).toHaveBeenCalledWith(401);
-      expect(mockReply.send).toHaveBeenCalledWith({
-        error: 'Credenciais inválidas',
-      });
-    });
+			expect(mockReply.send).toHaveBeenCalledWith({
+				user: publicUser,
+				session: expect.any(Object),
+			});
+		});
 
-    it('deve retornar erro se senha está incorreta', async () => {
-      const loginData = {
-        email: 'test@example.com',
-        password: 'wrongpassword',
-      };
+		it('retorna erro se nao esta autenticado', async () => {
+			(auth.handler as any).mockResolvedValue(authResponse({}, { status: 401 }));
 
-      mockRequest.body = loginData;
+			await getMe(mockRequest, mockReply);
 
-      const hashedPassword = await bcrypt.hash('correctpassword', 10);
+			expect(mockReply.status).toHaveBeenCalledWith(401);
+			expect(mockReply.send).toHaveBeenCalledWith({
+				error: 'Nao autenticado',
+			});
+		});
+	});
 
-      (prisma.user.findUnique as any).mockResolvedValue({
-        id: '1',
-        email: loginData.email,
-        password: hashedPassword,
-        name: 'Test User',
-        role: 'CLIENT',
-        isActive: true,
-      });
+	describe('refreshToken', () => {
+		it('renova e retorna sessao se valida', async () => {
+			(auth.handler as any).mockResolvedValue(
+				authResponse({
+					user: { id: publicUser.id },
+					session: { expiresAt: new Date().toISOString() },
+				})
+			);
+			(prisma.user.findUnique as any).mockResolvedValue(publicUser);
 
-      await login(mockRequest, mockReply);
+			await refreshToken(mockRequest, mockReply);
 
-      expect(mockReply.status).toHaveBeenCalledWith(401);
-      expect(mockReply.send).toHaveBeenCalledWith({
-        error: 'Credenciais inválidas',
-      });
-    });
+			expect(mockReply.send).toHaveBeenCalledWith({
+				user: publicUser,
+				session: expect.any(Object),
+			});
+		});
 
-    it('deve retornar erro se usuário está desativado', async () => {
-      const loginData = {
-        email: 'test@example.com',
-        password: 'password123',
-      };
+		it('retorna erro se sessao e invalida', async () => {
+			(auth.handler as any).mockResolvedValue(authResponse({}, { status: 401 }));
 
-      mockRequest.body = loginData;
+			await refreshToken(mockRequest, mockReply);
 
-      const hashedPassword = await bcrypt.hash(loginData.password, 10);
-
-      (prisma.user.findUnique as any).mockResolvedValue({
-        id: '1',
-        email: loginData.email,
-        password: hashedPassword,
-        name: 'Test User',
-        role: 'CLIENT',
-        isActive: false,
-      });
-
-      await login(mockRequest, mockReply);
-
-      expect(mockReply.status).toHaveBeenCalledWith(403);
-      expect(mockReply.send).toHaveBeenCalledWith({
-        error: 'Usuário desativado',
-      });
-    });
-  });
-
-  describe('logout', () => {
-    it('deve fazer logout com sucesso', async () => {
-      const { auth } = await import('../../src/lib/auth');
-      (auth.api.signOut as any).mockResolvedValue(undefined);
-
-      await logout(mockRequest, mockReply);
-
-      expect(auth.api.signOut).toHaveBeenCalledWith({
-        headers: mockRequest.headers,
-      });
-
-      expect(mockReply.send).toHaveBeenCalledWith({
-        message: 'Logout realizado com sucesso',
-      });
-    });
-  });
-
-  describe('getMe', () => {
-    it('deve retornar usuário autenticado', async () => {
-      const { auth } = await import('../../src/lib/auth');
-      (auth.api.getSession as any).mockResolvedValue({
-        user: {
-          id: '1',
-          email: 'test@example.com',
-          name: 'Test User',
-          role: 'CLIENT',
-        },
-      });
-
-      await getMe(mockRequest, mockReply);
-
-      expect(auth.api.getSession).toHaveBeenCalledWith({
-        headers: mockRequest.headers,
-      });
-
-      expect(mockReply.send).toHaveBeenCalledWith({
-        user: expect.objectContaining({
-          email: 'test@example.com',
-        }),
-      });
-    });
-
-    it('deve retornar erro se não está autenticado', async () => {
-      const { auth } = await import('../../src/lib/auth');
-      (auth.api.getSession as any).mockResolvedValue(null);
-
-      await getMe(mockRequest, mockReply);
-
-      expect(mockReply.status).toHaveBeenCalledWith(401);
-      expect(mockReply.send).toHaveBeenCalledWith({
-        error: 'Não autenticado',
-      });
-    });
-  });
-
-  describe('refreshToken', () => {
-    it('deve retornar sessão se válida', async () => {
-      const { auth } = await import('../../src/lib/auth');
-      (auth.api.getSession as any).mockResolvedValue({
-        user: {
-          id: '1',
-          email: 'test@example.com',
-          name: 'Test User',
-        },
-      });
-
-      await refreshToken(mockRequest, mockReply);
-
-      expect(mockReply.send).toHaveBeenCalledWith({
-        session: expect.any(Object),
-      });
-    });
-
-    it('deve retornar erro se sessão é inválida', async () => {
-      const { auth } = await import('../../src/lib/auth');
-      (auth.api.getSession as any).mockResolvedValue(null);
-
-      await refreshToken(mockRequest, mockReply);
-
-      expect(mockReply.status).toHaveBeenCalledWith(401);
-      expect(mockReply.send).toHaveBeenCalledWith({
-        error: 'Sessão inválida ou expirada',
-      });
-    });
-  });
+			expect(mockReply.status).toHaveBeenCalledWith(401);
+			expect(mockReply.send).toHaveBeenCalledWith({
+				error: 'Sessao invalida ou expirada',
+			});
+		});
+	});
 });

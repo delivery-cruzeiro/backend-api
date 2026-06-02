@@ -1,59 +1,52 @@
 # Build stage
 FROM node:22-alpine AS builder
 
-WORKDIR /app
+WORKDIR /workspace
 
-# Install pnpm
 RUN npm install -g pnpm
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY shared-types/package.json ./shared-types/package.json
+COPY backend-api/package.json ./backend-api/package.json
 
-# Copy source code
-COPY . .
+RUN pnpm install --filter delivery-cruzeiro-api... --ignore-scripts --no-strict-peer-dependencies
 
-# Remove pnpm-workspace.yaml if exists to disable workspaces during build
-RUN rm -f pnpm-workspace.yaml
+COPY shared-types ./shared-types
+COPY backend-api ./backend-api
 
-# Install all dependencies (including devDependencies for Prisma)
-RUN pnpm install --ignore-scripts --no-strict-peer-dependencies
+RUN pnpm --filter @delivery-cruzeiro/types build
 
-# Prisma Client will be generated in runtime via entrypoint (when DATABASE_URL is available)
+WORKDIR /workspace/backend-api
 
-# Build TypeScript
+# A disposable DATABASE_URL is enough for generation; runtime uses docker-compose env.
+RUN DATABASE_URL="postgresql://postgres:postgres@localhost:5432/delivery_cruzeiro?schema=public" pnpm run prisma:generate
+
 RUN pnpm run build
 
 # Production stage
 FROM node:22-alpine AS production
 
-WORKDIR /app
+WORKDIR /workspace
 
-# Install pnpm
 RUN npm install -g pnpm
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
-
-# Remove pnpm-workspace.yaml if exists to disable workspaces during build
-RUN rm -f pnpm-workspace.yaml
-
-# Copy all dependencies from builder (including generated Prisma Client)
-COPY --from=builder /app/node_modules ./node_modules
-
-# Copy built application from builder
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
-
-# Copy entrypoint script
-COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
-
-# Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S -u 1001 -G nodejs nodejs
 
-# Change ownership
-RUN chown -R nodejs:nodejs /app
+COPY --from=builder --chown=nodejs:nodejs /workspace/node_modules ./node_modules
+COPY --from=builder --chown=nodejs:nodejs /workspace/backend-api/node_modules ./backend-api/node_modules
+COPY --from=builder --chown=nodejs:nodejs /workspace/shared-types/node_modules ./shared-types/node_modules
+COPY --from=builder --chown=nodejs:nodejs /workspace/backend-api/package.json ./backend-api/package.json
+COPY --from=builder --chown=nodejs:nodejs /workspace/backend-api/dist ./backend-api/dist
+COPY --from=builder --chown=nodejs:nodejs /workspace/backend-api/prisma ./backend-api/prisma
+COPY --from=builder --chown=nodejs:nodejs /workspace/backend-api/prisma.config.ts ./backend-api/prisma.config.ts
+COPY --from=builder --chown=nodejs:nodejs /workspace/shared-types/package.json ./shared-types/package.json
+COPY --from=builder --chown=nodejs:nodejs /workspace/shared-types/dist ./shared-types/dist
+
+COPY --chown=nodejs:nodejs backend-api/docker-entrypoint.sh ./backend-api/docker-entrypoint.sh
+RUN chmod +x ./backend-api/docker-entrypoint.sh
+
+WORKDIR /workspace/backend-api
 
 USER nodejs
 
