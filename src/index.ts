@@ -1,140 +1,241 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import dotenv from 'dotenv';
 import { auth } from './lib/auth.js';
+import { orderEventsEmitter } from './events/order-events.emitter.js';
+import { SocketGateway } from './gateways/socket.gateway.js';
+import { appConfigRoutes } from './routes/app-config.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
+import { categoryRoutes } from './routes/category.routes.js';
+import { clientRoutes } from './routes/client.routes.js';
+import { menuRoutes } from './routes/menu.routes.js';
+import { invoiceRoutes } from './routes/invoice.routes.js';
+import { orderRoutes } from './routes/order.routes.js';
+import { productRoutes } from './routes/product.routes.js';
+import { promotionRoutes } from './routes/promotion.routes.js';
+import { storeRoutes } from './routes/store.routes.js';
+import { subcategoryRoutes } from './routes/subcategory.routes.js';
 import { userRoutes } from './routes/user.routes.js';
+import { ensureDefaultAdminInvariant } from './services/admin-invariant.service.js';
 
-// Carregar variáveis de ambiente
-console.log('📦 Carregando variáveis de ambiente...');
 dotenv.config();
-console.log('✅ Variáveis de ambiente carregadas');
 
-// Criar instância do Fastify
-console.log('🔧 Criando instância do Fastify...');
 const fastify = Fastify({
-  logger: {
-    level: process.env.LOG_LEVEL || 'info',
-  },
+	logger: {
+		level: process.env.LOG_LEVEL || 'info',
+	},
 });
-console.log('✅ Instância do Fastify criada');
 
-// Registrar plugins
+const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173')
+	.split(',')
+	.map(origin => origin.trim())
+	.filter(Boolean);
+
+function isAllowedOrigin(origin?: string) {
+	if (!origin) {
+		return true;
+	}
+
+	return allowedOrigins.some(allowedOrigin => {
+		if (allowedOrigin === '*' || allowedOrigin === origin) {
+			return true;
+		}
+
+		if (allowedOrigin.includes('*')) {
+			const escapedPattern = allowedOrigin.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+			const regexPattern = `^${escapedPattern.replace(/\*/g, '.*')}$`;
+
+			return new RegExp(regexPattern).test(origin);
+		}
+
+		if (allowedOrigin.startsWith('.')) {
+			try {
+				return new URL(origin).hostname.endsWith(allowedOrigin);
+			} catch {
+				return false;
+			}
+		}
+
+		return false;
+	});
+}
+
+function toWebHeaders(headers: FastifyRequest['headers']) {
+	const webHeaders = new Headers();
+
+	for (const [key, value] of Object.entries(headers)) {
+		if (value === undefined || key.toLowerCase() === 'content-length') {
+			continue;
+		}
+
+		if (Array.isArray(value)) {
+			webHeaders.set(key, value.join(', '));
+			continue;
+		}
+
+		webHeaders.set(key, String(value));
+	}
+
+	return webHeaders;
+}
+
+function copyWebResponseHeaders(response: Response, reply: FastifyReply) {
+	response.headers.forEach((value, key) => {
+		if (key.toLowerCase() === 'set-cookie' || key.toLowerCase() === 'content-length') {
+			return;
+		}
+
+		reply.header(key, value);
+	});
+
+	const headers = response.headers as Headers & {
+		getSetCookie?: () => string[];
+	};
+	const cookies = headers.getSetCookie?.() ?? [];
+	const fallbackCookie = response.headers.get('set-cookie');
+
+	if (cookies.length > 0) {
+		reply.header('set-cookie', cookies);
+	} else if (fallbackCookie) {
+		reply.header('set-cookie', fallbackCookie);
+	}
+}
+
 const startServer = async () => {
-  try {
-    console.log('🔌 Registrando plugin CORS...');
-    // Configurar CORS
-    await fastify.register(cors, {
-      origin: process.env.CORS_ORIGIN || '*',
-      credentials: true,
-    });
-    console.log('✅ CORS registrado');
+	try {
+		await fastify.register(cors, {
+			origin: async (origin: string | undefined) => {
+				if (isAllowedOrigin(origin)) {
+					return true;
+				}
 
-    console.log('🛡️ Registrando plugin Helmet...');
-    // Configurar Helmet para segurança
-    await fastify.register(helmet, {
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          scriptSrc: ["'self'"],
-          imgSrc: ["'self'", 'data:', 'https:'],
-        },
-      },
-    });
-    console.log('✅ Helmet registrado');
+				throw new Error('Origem nao permitida pelo CORS');
+			},
+			credentials: true,
+		});
 
-    console.log('⚡ Registrando plugin Rate Limit...');
-    // Configurar Rate Limiting
-    await fastify.register(rateLimit, {
-      max: 100, // máximo de 100 requisições por janela
-      timeWindow: '1 minute', // janela de 1 minuto
-    });
-    console.log('✅ Rate Limit registrado');
+		await fastify.register(helmet, {
+			contentSecurityPolicy: {
+				directives: {
+					defaultSrc: ["'self'"],
+					styleSrc: ["'self'", "'unsafe-inline'"],
+					scriptSrc: ["'self'"],
+					imgSrc: ["'self'", 'data:', 'https:'],
+				},
+			},
+		});
 
-    console.log('📝 Registrando rotas...');
+		await fastify.register(rateLimit, {
+			max: 100,
+			timeWindow: '1 minute',
+		});
 
-    // Adicionar middleware global para Better Auth
-    fastify.addHook('onRequest', async (_request, reply) => {
-      reply.header('Access-Control-Allow-Credentials', 'true');
-    });
-    // Endpoint de health check
-    fastify.get('/health', async () => {
-      return {
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-      };
-    });
+		await fastify.register(multipart, {
+			limits: {
+				fileSize: 5 * 1024 * 1024,
+				files: 1,
+			},
+		});
 
-    // Endpoint de teste base
-    fastify.get('/api/test', async () => {
-      return {
-        message: 'API funcionando corretamente!',
-        version: '1.0.0',
-        timestamp: new Date().toISOString(),
-      };
-    });
+		fastify.addHook('onRequest', async (_request, reply) => {
+			reply.header('Access-Control-Allow-Credentials', 'true');
+		});
 
-    // Endpoint para Better Auth handler
-    fastify.all('/api/auth/*', async (request, reply) => {
-      const url = new URL(request.url, 'http://localhost:4000');
-      const authRequest = new Request(url.toString(), {
-        method: request.method,
-        headers: request.headers as HeadersInit,
-        body: request.body ? JSON.stringify(request.body) : undefined,
-      });
+		const socketGateway = new SocketGateway({
+			corsOrigin: (
+				origin: string | undefined,
+				callback: (error: Error | null, allow?: boolean) => void
+			) => {
+				if (isAllowedOrigin(origin)) {
+					callback(null, true);
+					return;
+				}
 
-      const authResponse = await auth.handler(authRequest);
-      
-      // Copiar headers da resposta do Better Auth
-      authResponse.headers.forEach((value: string, key: string) => {
-        reply.header(key, value);
-      });
+				callback(new Error('Origem nao permitida pelo CORS'), false);
+			},
+			eventEmitter: orderEventsEmitter,
+			httpServer: fastify.server,
+		});
 
-      // Enviar status e corpo
-      reply.status(authResponse.status);
-      return reply.send(await authResponse.text());
-    });
+		fastify.addHook('onClose', async () => {
+			await socketGateway.close();
+		});
 
-    // Registrar rotas de autenticação
-    await fastify.register(authRoutes, { prefix: '/api' });
-    console.log('✅ Rotas de autenticação registradas');
+		fastify.get('/health', async () => {
+			return {
+				status: 'ok',
+				timestamp: new Date().toISOString(),
+				uptime: process.uptime(),
+			};
+		});
 
-    // Registrar rotas de usuários
-    await fastify.register(userRoutes, { prefix: '/api' });
-    console.log('✅ Rotas de usuários registradas');
-    console.log('✅ Rotas registradas');
+		fastify.get('/api/test', async () => {
+			return {
+				message: 'API funcionando corretamente!',
+				version: '1.0.0',
+				timestamp: new Date().toISOString(),
+			};
+		});
 
-    // Iniciar servidor
-    const port = Number(process.env.PORT) || 4000;
-    const host = process.env.HOST || '0.0.0.0';
-    console.log(`🚀 Iniciando servidor em ${host}:${port}...`);
+		await fastify.register(authRoutes, { prefix: '/api' });
+		await fastify.register(appConfigRoutes, { prefix: '/api' });
+		await fastify.register(categoryRoutes, { prefix: '/api' });
+		await fastify.register(clientRoutes, { prefix: '/api' });
+		await fastify.register(invoiceRoutes, { prefix: '/api' });
+		await fastify.register(menuRoutes, { prefix: '/api' });
+		await fastify.register(orderRoutes, { prefix: '/api' });
+		await fastify.register(productRoutes, { prefix: '/api' });
+		await fastify.register(promotionRoutes, { prefix: '/api' });
+		await fastify.register(storeRoutes, { prefix: '/api' });
+		await fastify.register(subcategoryRoutes, { prefix: '/api' });
+		await fastify.register(userRoutes, { prefix: '/api' });
+		await ensureDefaultAdminInvariant();
 
-    await fastify.listen({ port, host });
+		fastify.all('/api/auth/*', async (request, reply) => {
+			const baseURL =
+				process.env.BETTER_AUTH_URL ?? `http://${request.headers.host ?? 'localhost:4000'}`;
+			const url = new URL(request.url, baseURL);
+			const headers = toWebHeaders(request.headers);
+			const hasBody =
+				request.method !== 'GET' && request.method !== 'HEAD' && request.body !== undefined;
 
-    console.log(`✅ Servidor rodando em http://${host}:${port}`);
-    console.log(`📚 Documentação: http://${host}:${port}/docs`);
-  } catch (err) {
-    console.error('❌ Erro ao iniciar servidor:', err);
-    fastify.log.error(err);
-    process.exit(1);
-  }
+			if (hasBody) {
+				headers.set('content-type', headers.get('content-type') ?? 'application/json');
+			}
+
+			const authResponse = await auth.handler(
+				new Request(url.toString(), {
+					method: request.method,
+					headers,
+					body: hasBody ? JSON.stringify(request.body) : undefined,
+				})
+			);
+
+			copyWebResponseHeaders(authResponse, reply);
+			reply.status(authResponse.status);
+			return reply.send(await authResponse.text());
+		});
+
+		const port = Number(process.env.PORT) || 4000;
+		const host = process.env.HOST || '0.0.0.0';
+
+		await fastify.listen({ port, host });
+		fastify.log.info(`Servidor rodando em http://${host}:${port}`);
+	} catch (err) {
+		fastify.log.error(err);
+		process.exit(1);
+	}
 };
 
-// Graceful shutdown
 const gracefulShutdown = async () => {
-  console.log('🛑 Iniciando graceful shutdown...');
-  await fastify.close();
-  console.log('✅ Servidor encerrado com sucesso');
-  process.exit(0);
+	await fastify.close();
+	process.exit(0);
 };
 
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
-// Iniciar servidor
-console.log('🎬 Iniciando configuração do servidor...');
 startServer();

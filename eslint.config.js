@@ -6,6 +6,17 @@ import prettierConfig from 'eslint-config-prettier';
 import globals from 'globals';
 
 export default [
+	{
+		ignores: [
+			'.git/**',
+			'.github/**',
+			'.husky/**',
+			'coverage/**',
+			'dist/**',
+			'node_modules/**',
+			'pnpm-lock.yaml',
+		],
+	},
 	js.configs.recommended,
 	{
 		files: ['**/*.{js,ts}'],
@@ -37,8 +48,15 @@ export default [
 			'@typescript-eslint/explicit-function-return-type': 'off',
 			'@typescript-eslint/explicit-module-boundary-types': 'off',
 			'@typescript-eslint/no-non-null-assertion': 'warn',
+			'no-undef': 'off',
 			'no-console': ['warn', { allow: ['warn', 'error'] }],
 			'no-debugger': 'error',
+		},
+	},
+	{
+		files: ['tests/**/*.ts'],
+		rules: {
+			'@typescript-eslint/no-explicit-any': 'off',
 		},
 	},
 	prettierConfig,

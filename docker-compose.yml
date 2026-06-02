@@ -1,84 +1,112 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: delivery-cruzeiro-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: delivery_cruzeiro
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - delivery-network
+    postgres:
+        image: postgres:16-alpine
+        container_name: delivery-cruzeiro-db
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_DB: delivery_cruzeiro
+        ports:
+            - '5432:5432'
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        healthcheck:
+            test: ['CMD-SHELL', 'pg_isready -U postgres -d delivery_cruzeiro']
+            interval: 10s
+            timeout: 5s
+            retries: 5
+        networks:
+            - delivery-network
 
-  backend-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: delivery-cruzeiro-api
-    restart: unless-stopped
-    ports:
-      - "4000:4000"
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:4000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})\""]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    environment:
-      # Database
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/delivery_cruzeiro?schema=public
-      
-      # Server
-      PORT: 4000
-      HOST: 0.0.0.0
-      NODE_ENV: development
-      LOG_LEVEL: info
-      
-      # CORS
-      CORS_ORIGIN: '*'
-      
-      # JWT
-      JWT_SECRET: your-super-secret-jwt-key-change-in-production
-      JWT_EXPIRES_IN: 7d
-      
-      # Better Auth
-      BETTER_AUTH_SECRET: your-better-auth-secret-change-in-production
-      BETTER_AUTH_URL: http://localhost:4000
-      
-      # AbacatePay
-      ABACATEPAY_API_KEY: your-abacatepay-api-key
-      ABACATEPAY_API_URL: https://api.abacatepay.com.br
-      
-      # Email (SMTP)
-      SMTP_HOST: smtp.example.com
-      SMTP_PORT: 587
-      SMTP_USER: your-email@example.com
-      SMTP_PASS: your-smtp-password
-      SMTP_FROM: noreply@deliverycruzeiro.com
-      
-      # WhatsApp
-      WHATSAPP_API_URL: https://api.whatsapp-service.com
-      WHATSAPP_API_KEY: your-whatsapp-api-key
-      WHATSAPP_PHONE_NUMBER: 5511999999999
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - delivery-network
+    backend-api:
+        image: node:22-alpine
+        container_name: delivery-cruzeiro-api
+        restart: unless-stopped
+        env_file:
+            - .env
+        working_dir: /workspace
+        ports:
+            - '4000:4000'
+        healthcheck:
+            test:
+                [
+                    'CMD-SHELL',
+                    'node -e "require(''http'').get(''http://localhost:4000/health'', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"',
+                ]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 40s
+        environment:
+            # Database
+            DATABASE_URL: postgresql://postgres:postgres@postgres:5432/delivery_cruzeiro?schema=public
+
+            # Server
+            PORT: 4000
+            HOST: 0.0.0.0
+            NODE_ENV: development
+            LOG_LEVEL: info
+            CI: 'true'
+            PNPM_CONFIG_CONFIRM_MODULES_PURGE: 'false'
+
+            # CORS
+            CORS_ORIGIN: http://localhost:5173,https://*.trycloudflare.com
+
+            # JWT
+            JWT_SECRET: your-super-secret-jwt-key-change-in-production
+            JWT_EXPIRES_IN: 7d
+
+            # Better Auth
+            BETTER_AUTH_SECRET: your-better-auth-secret-change-in-production
+            BETTER_AUTH_URL: http://localhost:4000
+
+            # AbacatePay
+            ABACATEPAY_API_KEY: your-abacatepay-api-key
+            ABACATEPAY_API_URL: https://api.abacatepay.com.br
+
+            # Email (SMTP)
+            SMTP_HOST: smtp.example.com
+            SMTP_PORT: 587
+            SMTP_USER: your-email@example.com
+            SMTP_PASS: your-smtp-password
+            SMTP_FROM: noreply@deliverycruzeiro.com
+
+            # WhatsApp
+            WHATSAPP_API_URL: https://api.whatsapp-service.com
+            WHATSAPP_API_KEY: your-whatsapp-api-key
+            WHATSAPP_PHONE_NUMBER: 5511999999999
+            CHOKIDAR_USEPOLLING: 'true'
+            WATCHPACK_POLLING: 'true'
+            TSX_WATCH_POLLING: 'true'
+        volumes:
+            - ..:/workspace
+            - backend_node_modules:/workspace/backend-api/node_modules
+            - shared_types_node_modules:/workspace/shared-types/node_modules
+            - root_node_modules:/workspace/node_modules
+        command: >
+            sh -c "npm install -g pnpm &&
+            pnpm install --no-strict-peer-dependencies --config.confirmModulesPurge=false &&
+            cd /workspace/backend-api &&
+            pnpm run prisma:generate &&
+            cd /workspace &&
+            pnpm --filter @delivery-cruzeiro/types build &&
+            (cd /workspace/shared-types && pnpm run dev &
+            cd /workspace &&
+            pnpm --filter delivery-cruzeiro-api dev)"
+        depends_on:
+            postgres:
+                condition: service_healthy
+        networks:
+            - delivery-network
 
 volumes:
-  postgres_data:
-    driver: local
+    postgres_data:
+        driver: local
+    backend_node_modules:
+    shared_types_node_modules:
+    root_node_modules:
 
 networks:
-  delivery-network:
-    driver: bridge
+    delivery-network:
+        driver: bridge

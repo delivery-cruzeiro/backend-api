@@ -6,7 +6,7 @@ API do sistema Delivery Cruzeiro, construída com Node.js, TypeScript, Prisma OR
 
 - **Runtime**: Node.js 22
 - **Linguagem**: TypeScript 5.9
-- **ORM**: Prisma 6.19.2
+- **ORM**: Prisma 7.2+
 - **Banco de Dados**: PostgreSQL 16
 - **Package Manager**: pnpm
 
@@ -73,7 +73,8 @@ WHATSAPP_API_KEY="your-whatsapp-api-key"
 WHATSAPP_PHONE_NUMBER="5511999999999"
 
 # CORS
-FRONTEND_URL="http://localhost:3000"
+CORS_ORIGIN="http://localhost:5173"
+FRONTEND_URL="http://localhost:5173"
 ```
 
 ## Scripts Disponíveis
@@ -151,7 +152,7 @@ docker run -p 4000:4000 \
 
 ## Configuração do Prisma
 
-O projeto usa a nova configuração do Prisma 6.x:
+O projeto usa a nova configuração do Prisma 7+:
 
 - **[`prisma.config.ts`](prisma.config.ts)**: Configuração do datasource e migrations
 - **[`prisma/schema.prisma`](prisma/schema.prisma)**: Definição dos modelos do banco
@@ -247,15 +248,11 @@ docker-compose -f docker-compose.prod.yml up -d
 # Executar testes unitários
 pnpm test:unit
 
-# Executar testes de integração
-pnpm test:integration
-
-# Executar testes E2E
-pnpm test:e2e
-
 # Executar todos os testes com coverage
-pnpm test --coverage
+pnpm test:coverage
 ```
+
+Testes de integração e E2E ainda serão adicionados nas próximas fases.
 
 ## Troubleshooting
 
