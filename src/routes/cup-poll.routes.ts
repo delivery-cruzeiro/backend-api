@@ -16,7 +16,7 @@ export async function cupPollRoutes(fastify: FastifyInstance) {
 	fastify.post(
 		'/cup-poll/guesses',
 		{
-			preHandler: [validateZod(createCupPollGuessSchema) as RouteHandlerMethod],
+			preValidation: validateZod(createCupPollGuessSchema),
 			schema: {
 				description: 'Registrar palpite da promocao Palpite Certo',
 				tags: ['Cup Poll'],
