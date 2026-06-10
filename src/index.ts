@@ -11,6 +11,7 @@ import { appConfigRoutes } from './routes/app-config.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { categoryRoutes } from './routes/category.routes.js';
 import { clientRoutes } from './routes/client.routes.js';
+import { cupPollRoutes } from './routes/cup-poll.routes.js';
 import { menuRoutes } from './routes/menu.routes.js';
 import { invoiceRoutes } from './routes/invoice.routes.js';
 import { orderRoutes } from './routes/order.routes.js';
@@ -29,38 +30,8 @@ const fastify = Fastify({
 	},
 });
 
-const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173')
-	.split(',')
-	.map(origin => origin.trim())
-	.filter(Boolean);
-
-function isAllowedOrigin(origin?: string) {
-	if (!origin) {
-		return true;
-	}
-
-	return allowedOrigins.some(allowedOrigin => {
-		if (allowedOrigin === '*' || allowedOrigin === origin) {
-			return true;
-		}
-
-		if (allowedOrigin.includes('*')) {
-			const escapedPattern = allowedOrigin.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
-			const regexPattern = `^${escapedPattern.replace(/\*/g, '.*')}$`;
-
-			return new RegExp(regexPattern).test(origin);
-		}
-
-		if (allowedOrigin.startsWith('.')) {
-			try {
-				return new URL(origin).hostname.endsWith(allowedOrigin);
-			} catch {
-				return false;
-			}
-		}
-
-		return false;
-	});
+function isAllowedOrigin(_origin?: string) {
+	return true;
 }
 
 function toWebHeaders(headers: FastifyRequest['headers']) {
@@ -184,6 +155,7 @@ const startServer = async () => {
 		await fastify.register(appConfigRoutes, { prefix: '/api' });
 		await fastify.register(categoryRoutes, { prefix: '/api' });
 		await fastify.register(clientRoutes, { prefix: '/api' });
+		await fastify.register(cupPollRoutes, { prefix: '/api' });
 		await fastify.register(invoiceRoutes, { prefix: '/api' });
 		await fastify.register(menuRoutes, { prefix: '/api' });
 		await fastify.register(orderRoutes, { prefix: '/api' });

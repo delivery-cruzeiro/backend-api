@@ -658,3 +658,17 @@ model Favorite {
   @@index([userId])
   @@index([productId])
 }
+
+// ============================================
+// MODELO CUP_POLL_GUESS (Palpite Certo)
+// ============================================
+
+model CupPollGuess {
+  id              String   @id @default(cuid())
+  instagramHandle String   @unique @map("instagram_handle")
+  score           String
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("cup_poll_guesses")
+}
