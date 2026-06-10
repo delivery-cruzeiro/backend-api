@@ -40,7 +40,7 @@ services:
             start_period: 40s
         environment:
             # Database
-            DATABASE_URL: postgresql://postgres:postgres@postgres:5432/delivery_cruzeiro?schema=public
+            DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/delivery_cruzeiro?schema=public}
 
             # Server
             PORT: 4000
