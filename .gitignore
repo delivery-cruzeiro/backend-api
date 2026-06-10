@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+**/node_modules/
 .pnp
 .pnp.js
 
@@ -8,7 +9,9 @@ coverage/
 
 # Production
 dist/
+**/dist/
 build/
+**/build/
 
 # Misc
 .DS_Store
@@ -19,6 +22,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+.pnpm-store/
+**/.pnpm-store/
 
 # Local env files
 .env
@@ -39,8 +44,5 @@ prisma/migrations/
 
 # OS
 Thumbs.db
-
-# Docker
-.dockerignore
 
 /src/generated/prisma
