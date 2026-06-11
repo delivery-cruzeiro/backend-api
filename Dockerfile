@@ -24,8 +24,13 @@ FROM node:22-alpine AS production
 
 WORKDIR /workspace
 
-RUN npm install -g pnpm && \
-    addgroup -g 1001 -S nodejs && \
+ENV TMPDIR=/tmp
+ENV XDG_CACHE_HOME=/tmp/.cache
+ENV npm_config_cache=/tmp/.npm
+ENV PNPM_HOME=/tmp/.pnpm
+ENV PNPM_STORE_DIR=/tmp/.pnpm-store
+
+RUN addgroup -g 1001 -S nodejs && \
     adduser -S -u 1001 -G nodejs nodejs
 
 COPY --from=builder --chown=nodejs:nodejs /workspace/node_modules ./node_modules
