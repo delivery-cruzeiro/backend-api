@@ -14,7 +14,7 @@ echo "Prisma Client ja foi gerado no build da imagem."
 
 if [ "${PRISMA_DEPLOY_MIGRATIONS:-true}" = "true" ]; then
 	echo "Aplicando migrations do Prisma..."
-	pnpm run prisma:deploy
+	./node_modules/.bin/prisma migrate deploy
 	echo "Migrations aplicadas com sucesso."
 else
 	echo "PRISMA_DEPLOY_MIGRATIONS=false; pulando migrations."
