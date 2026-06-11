@@ -11,6 +11,7 @@ on:
 
 env:
   NODE_VERSION: '22'
+  DATABASE_URL: postgresql://test_user:test_password@localhost:5432/delivery_test
 
 jobs:
   # Job 1: Executar testes em qualquer branch
