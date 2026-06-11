@@ -10,8 +10,7 @@ if [ -z "$DATABASE_URL" ]; then
 	exit 1
 fi
 
-echo "Gerando Prisma Client..."
-pnpm run prisma:generate
+echo "Prisma Client ja foi gerado no build da imagem."
 
 if [ "${PRISMA_DEPLOY_MIGRATIONS:-true}" = "true" ]; then
 	echo "Aplicando migrations do Prisma..."

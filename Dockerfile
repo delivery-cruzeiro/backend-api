@@ -36,7 +36,8 @@ COPY --from=builder --chown=nodejs:nodejs /workspace/prisma.config.ts ./prisma.c
 COPY --from=builder --chown=nodejs:nodejs /workspace/shared-types ./shared-types
 COPY --chown=nodejs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
 
-RUN chmod +x ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh && \
+    chown nodejs:nodejs /workspace
 
 USER nodejs
 
