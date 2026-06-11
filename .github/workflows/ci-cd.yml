@@ -68,6 +68,9 @@ jobs:
       - name: Gerar Prisma Client
         run: pnpm prisma:generate
 
+      - name: Build shared-types
+        run: pnpm --filter @delivery-cruzeiro/types build
+
       - name: Executar migrations do Prisma
         run: pnpm prisma:push
         env:
@@ -127,6 +130,9 @@ jobs:
 
       - name: Gerar Prisma Client
         run: pnpm prisma:generate
+
+      - name: Build shared-types
+        run: pnpm --filter @delivery-cruzeiro/types build
 
       - name: Build do projeto
         run: pnpm build
@@ -240,6 +246,9 @@ jobs:
       - name: Gerar Prisma Client
         run: pnpm prisma:generate
 
+      - name: Build shared-types
+        run: pnpm --filter @delivery-cruzeiro/types build
+
       - name: Executar migrations do Prisma
         run: pnpm prisma:push
         env:
@@ -344,6 +353,9 @@ jobs:
 
       - name: Gerar Prisma Client
         run: pnpm prisma:generate
+
+      - name: Build shared-types
+        run: pnpm --filter @delivery-cruzeiro/types build
 
       - name: Build para produção
         run: pnpm build
