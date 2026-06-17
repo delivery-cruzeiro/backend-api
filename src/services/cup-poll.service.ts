@@ -1,9 +1,13 @@
 import type { CreateCupPollGuessDTO } from '@delivery-cruzeiro/types';
+import { Prisma } from '@prisma/client';
 import { CupPollRepository } from '../repositories/cup-poll.repository.js';
+
+const cupPollHomeTeam = 'br';
+const cupPollAwayTeam = 'ht';
 
 export class CupPollDuplicateGuessError extends Error {
 	constructor() {
-		super('Este Instagram ja registrou um palpite');
+		super('Este Instagram ja registrou um palpite para este jogo');
 		this.name = 'CupPollDuplicateGuessError';
 	}
 }
@@ -13,17 +17,33 @@ export class CupPollService {
 
 	async createGuess(input: CreateCupPollGuessDTO) {
 		const instagramHandle = input.instagramHandle.trim().toLowerCase();
-		const existingGuess = await this.repository.findByInstagramHandle(instagramHandle);
+		const scoreFormat = `${cupPollHomeTeam}-${cupPollAwayTeam}`;
+		const existingGuess = await this.repository.findByInstagramHandleAndScoreFormat(
+			instagramHandle,
+			scoreFormat,
+		);
 
 		if (existingGuess) {
 			throw new CupPollDuplicateGuessError();
 		}
 
-		const score = `br(${input.brScore})-ht(${input.mrScore})`;
+		const score = `${cupPollHomeTeam}(${input.brScore})-${cupPollAwayTeam}(${input.mrScore})`;
 
-		return this.repository.create({
-			instagramHandle,
-			score,
-		});
+		try {
+			return await this.repository.create({
+				instagramHandle,
+				score,
+				scoreFormat,
+			});
+		} catch (error) {
+			if (
+				error instanceof Prisma.PrismaClientKnownRequestError &&
+				error.code === 'P2002'
+			) {
+				throw new CupPollDuplicateGuessError();
+			}
+
+			throw error;
+		}
 	}
 }
