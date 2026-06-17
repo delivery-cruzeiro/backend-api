@@ -1,5 +1,5 @@
 ALTER TABLE "cup_poll_guesses"
-	ADD COLUMN "score_format" TEXT;
+	ADD COLUMN "score_format" TEXT DEFAULT 'br-mr';
 
 UPDATE "cup_poll_guesses"
 SET "score_format" = regexp_replace(

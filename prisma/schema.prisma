@@ -667,7 +667,7 @@ model CupPollGuess {
   id              String   @id @default(cuid())
   instagramHandle String   @map("instagram_handle")
   score           String
-  scoreFormat     String   @map("score_format")
+  scoreFormat     String   @default("br-mr") @map("score_format")
   createdAt       DateTime @default(now()) @map("created_at")
 
   @@unique([instagramHandle, scoreFormat])
