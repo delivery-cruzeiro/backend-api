@@ -8,12 +8,10 @@ export type CreateCupPollGuessRecord = {
 
 export class CupPollRepository {
 	findByInstagramHandleAndScoreFormat(instagramHandle: string, scoreFormat: string) {
-		return prisma.cupPollGuess.findUnique({
+		return prisma.cupPollGuess.findFirst({
 			where: {
-				instagramHandle_scoreFormat: {
-					instagramHandle,
-					scoreFormat,
-				},
+				instagramHandle,
+				scoreFormat,
 			},
 		});
 	}
