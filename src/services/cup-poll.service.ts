@@ -19,7 +19,7 @@ export class CupPollService {
 			throw new CupPollDuplicateGuessError();
 		}
 
-		const score = `br(${input.brScore})-mr(${input.mrScore})`;
+		const score = `br(${input.brScore})-ht(${input.mrScore})`;
 
 		return this.repository.create({
 			instagramHandle,
