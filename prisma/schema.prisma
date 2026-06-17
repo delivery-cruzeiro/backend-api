@@ -665,10 +665,12 @@ model Favorite {
 
 model CupPollGuess {
   id              String   @id @default(cuid())
-  instagramHandle String   @unique @map("instagram_handle")
+  instagramHandle String   @map("instagram_handle")
   score           String
+  scoreFormat     String   @map("score_format")
   createdAt       DateTime @default(now()) @map("created_at")
 
+  @@unique([instagramHandle, scoreFormat])
   @@index([createdAt])
   @@map("cup_poll_guesses")
 }

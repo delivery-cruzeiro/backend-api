@@ -3,12 +3,18 @@ import { prisma } from '../lib/prisma.js';
 export type CreateCupPollGuessRecord = {
 	instagramHandle: string;
 	score: string;
+	scoreFormat: string;
 };
 
 export class CupPollRepository {
-	findByInstagramHandle(instagramHandle: string) {
+	findByInstagramHandleAndScoreFormat(instagramHandle: string, scoreFormat: string) {
 		return prisma.cupPollGuess.findUnique({
-			where: { instagramHandle },
+			where: {
+				instagramHandle_scoreFormat: {
+					instagramHandle,
+					scoreFormat,
+				},
+			},
 		});
 	}
 
