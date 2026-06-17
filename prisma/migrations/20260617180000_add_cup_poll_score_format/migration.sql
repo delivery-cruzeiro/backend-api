@@ -1,5 +1,8 @@
 ALTER TABLE "cup_poll_guesses"
-	ADD COLUMN "score_format" TEXT DEFAULT 'br-mr';
+	ADD COLUMN IF NOT EXISTS "score_format" TEXT DEFAULT 'br-mr';
+
+ALTER TABLE "cup_poll_guesses"
+	ALTER COLUMN "score_format" SET DEFAULT 'br-mr';
 
 UPDATE "cup_poll_guesses"
 SET "score_format" = regexp_replace(
@@ -13,7 +16,7 @@ WHERE "score_format" IS NULL;
 ALTER TABLE "cup_poll_guesses"
 	ALTER COLUMN "score_format" SET NOT NULL;
 
-DROP INDEX "cup_poll_guesses_instagram_handle_key";
+DROP INDEX IF EXISTS "cup_poll_guesses_instagram_handle_key";
 
-CREATE UNIQUE INDEX "cup_poll_guesses_instagram_handle_score_format_key"
+CREATE INDEX IF NOT EXISTS "cup_poll_guesses_instagram_handle_score_format_idx"
 	ON "cup_poll_guesses"("instagram_handle", "score_format");
