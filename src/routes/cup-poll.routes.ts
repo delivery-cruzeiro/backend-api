@@ -22,11 +22,11 @@ export async function cupPollRoutes(fastify: FastifyInstance) {
 				tags: ['Cup Poll'],
 				body: {
 					type: 'object',
-					required: ['brScore', 'instagramHandle', 'mrScore'],
+					required: ['brScore', 'instagramHandle', 'scScore'],
 					properties: {
 						brScore: { type: 'number', minimum: 0, maximum: 99 },
 						instagramHandle: { type: 'string' },
-						mrScore: { type: 'number', minimum: 0, maximum: 99 },
+						scScore: { type: 'number', minimum: 0, maximum: 99 },
 					},
 				},
 				response: {
