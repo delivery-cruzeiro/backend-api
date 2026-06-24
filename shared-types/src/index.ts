@@ -415,6 +415,13 @@ export const createCupPollGuessSchema = z.object({
 	scScore: z.number().int().min(0).max(99),
 });
 
+export const getCupPollGuessQuerySchema = z.object({
+	instagramHandle: z
+		.string()
+		.trim()
+		.regex(/^@[A-Za-z0-9._-]{1,30}$/, 'instagramHandle must start with @'),
+});
+
 // ============================================================================
 // DTO TYPES INFERRED FROM ZOD
 // ============================================================================
@@ -452,6 +459,7 @@ export type ClientOrderDTO = z.infer<typeof createClientOrderSchema>;
 export type PromotionDTO = z.infer<typeof createPromotionSchema>;
 export type UpdateSystemSettingsDTO = z.infer<typeof updateSystemSettingsSchema>;
 export type CreateCupPollGuessDTO = z.infer<typeof createCupPollGuessSchema>;
+export type GetCupPollGuessQueryDTO = z.infer<typeof getCupPollGuessQuerySchema>;
 
 // ============================================================================
 // ENTITY TYPES

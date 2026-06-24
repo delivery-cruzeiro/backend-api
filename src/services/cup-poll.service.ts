@@ -46,4 +46,14 @@ export class CupPollService {
 			throw error;
 		}
 	}
+
+	findGuessByInstagramHandle(instagramHandle: string) {
+		const normalizedInstagramHandle = instagramHandle.trim().toLowerCase();
+		const scoreFormat = `${cupPollHomeTeam}-${cupPollAwayTeam}`;
+
+		return this.repository.findLatestByInstagramHandleAndScoreFormat(
+			normalizedInstagramHandle,
+			scoreFormat,
+		);
+	}
 }
