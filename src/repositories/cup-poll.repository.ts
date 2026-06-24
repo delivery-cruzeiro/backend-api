@@ -16,6 +16,18 @@ export class CupPollRepository {
 		});
 	}
 
+	findLatestByInstagramHandleAndScoreFormat(instagramHandle: string, scoreFormat: string) {
+		return prisma.cupPollGuess.findFirst({
+			orderBy: {
+				createdAt: 'desc',
+			},
+			where: {
+				instagramHandle,
+				scoreFormat,
+			},
+		});
+	}
+
 	create(input: CreateCupPollGuessRecord) {
 		return prisma.cupPollGuess.create({
 			data: input,
