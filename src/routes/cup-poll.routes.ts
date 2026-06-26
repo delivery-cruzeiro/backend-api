@@ -61,11 +61,11 @@ export async function cupPollRoutes(fastify: FastifyInstance) {
 				tags: ['Cup Poll'],
 				body: {
 					type: 'object',
-					required: ['brScore', 'instagramHandle', 'scScore'],
+					required: ['brScore', 'instagramHandle', 'jpScore'],
 					properties: {
 						brScore: { type: 'number', minimum: 0, maximum: 99 },
 						instagramHandle: { type: 'string' },
-						scScore: { type: 'number', minimum: 0, maximum: 99 },
+						jpScore: { type: 'number', minimum: 0, maximum: 99 },
 					},
 				},
 				response: {
