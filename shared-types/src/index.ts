@@ -412,7 +412,7 @@ export const createCupPollGuessSchema = z.object({
 		.string()
 		.trim()
 		.regex(/^@[A-Za-z0-9._-]{1,30}$/, 'instagramHandle must start with @'),
-	scScore: z.number().int().min(0).max(99),
+	jpScore: z.number().int().min(0).max(99),
 });
 
 export const getCupPollGuessQuerySchema = z.object({
