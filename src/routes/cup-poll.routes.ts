@@ -1,9 +1,10 @@
-import {
-	createCupPollGuessSchema,
-	getCupPollGuessQuerySchema,
-} from '@delivery-cruzeiro/types';
+import { createCupPollGuessSchema, getCupPollGuessQuerySchema } from '@delivery-cruzeiro/types';
 import type { FastifyInstance, RouteHandlerMethod } from 'fastify';
-import { createCupPollGuess, getCupPollGuess } from '../controllers/cup-poll.controller.js';
+import {
+	createCupPollGuess,
+	getCupPollGuess,
+	getCupPollResults,
+} from '../controllers/cup-poll.controller.js';
 import { validateZod } from '../middleware/validate-zod.middleware.js';
 
 const cupPollGuessResponseSchema = {
@@ -15,7 +16,44 @@ const cupPollGuessResponseSchema = {
 	},
 };
 
+const cupPollResultResponseSchema = {
+	type: 'object',
+	properties: {
+		'first-winner': { anyOf: [{ type: 'string' }, { type: 'null' }] },
+		match: { type: 'string' },
+		participants: {
+			type: 'array',
+			items: { type: 'string' },
+		},
+		result: { type: 'string' },
+		'second-winner': { anyOf: [{ type: 'string' }, { type: 'null' }] },
+	},
+};
+
 export async function cupPollRoutes(fastify: FastifyInstance) {
+	fastify.get(
+		'/cup-poll/results',
+		{
+			schema: {
+				description: 'Listar resultados dos boloes da promocao Palpite Certo',
+				tags: ['Cup Poll'],
+				response: {
+					200: {
+						type: 'array',
+						items: cupPollResultResponseSchema,
+					},
+					500: {
+						type: 'object',
+						properties: {
+							error: { type: 'string' },
+						},
+					},
+				},
+			},
+		},
+		getCupPollResults as RouteHandlerMethod
+	);
+
 	fastify.get(
 		'/cup-poll/guesses',
 		{

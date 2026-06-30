@@ -1,7 +1,4 @@
-import type {
-	CreateCupPollGuessDTO,
-	GetCupPollGuessQueryDTO,
-} from '@delivery-cruzeiro/types';
+import type { CreateCupPollGuessDTO, GetCupPollGuessQueryDTO } from '@delivery-cruzeiro/types';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { CupPollDuplicateGuessError, CupPollService } from '../services/cup-poll.service.js';
 
@@ -42,7 +39,7 @@ export const getCupPollGuess = async (
 ) => {
 	try {
 		const guess = await cupPollService.findGuessByInstagramHandle(
-			request.query.instagramHandle,
+			request.query.instagramHandle
 		);
 
 		if (!guess) {
@@ -62,6 +59,19 @@ export const getCupPollGuess = async (
 		});
 	} catch (error) {
 		console.error('Erro ao consultar palpite:', error);
+		return reply.status(500).send({
+			error: 'Erro interno do servidor',
+		});
+	}
+};
+
+export const getCupPollResults = async (_request: FastifyRequest, reply: FastifyReply) => {
+	try {
+		const results = await cupPollService.listResults();
+
+		return reply.status(200).send(results);
+	} catch (error) {
+		console.error('Erro ao consultar resultados dos boloes:', error);
 		return reply.status(500).send({
 			error: 'Erro interno do servidor',
 		});

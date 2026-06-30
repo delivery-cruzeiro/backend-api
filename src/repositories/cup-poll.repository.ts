@@ -6,6 +6,17 @@ export type CreateCupPollGuessRecord = {
 	scoreFormat: string;
 };
 
+export type PoolWinnerRecord = {
+	match: string;
+	result: string;
+	firstWinner: string | null;
+	secondWinner: string | null;
+};
+
+export type CorrectParticipantRecord = {
+	instagramHandle: string;
+};
+
 export class CupPollRepository {
 	findByInstagramHandleAndScoreFormat(instagramHandle: string, scoreFormat: string) {
 		return prisma.cupPollGuess.findFirst({
@@ -32,5 +43,27 @@ export class CupPollRepository {
 		return prisma.cupPollGuess.create({
 			data: input,
 		});
+	}
+
+	findPoolWinners() {
+		return prisma.$queryRaw<PoolWinnerRecord[]>`
+			SELECT
+				"match",
+				"result",
+				"first_winner" AS "firstWinner",
+				"second_winner" AS "secondWinner"
+			FROM "pool_winners"
+			ORDER BY "created_at" DESC
+		`;
+	}
+
+	findCorrectParticipants(match: string, result: string) {
+		return prisma.$queryRaw<CorrectParticipantRecord[]>`
+			SELECT "instagram_handle" AS "instagramHandle"
+			FROM "cup_poll_guesses"
+			WHERE "score_format" = ${match}
+				AND "score" = ${result}
+			ORDER BY "created_at" ASC
+		`;
 	}
 }

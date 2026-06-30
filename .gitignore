@@ -34,6 +34,9 @@ pnpm-debug.log*
 
 # Prisma
 prisma/migrations/
+!prisma/migrations/
+!prisma/migrations/20260630120000_add_pool_winners/
+!prisma/migrations/20260630120000_add_pool_winners/migration.sql
 
 # IDE
 .vscode/
