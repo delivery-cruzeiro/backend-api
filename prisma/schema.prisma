@@ -674,3 +674,18 @@ model CupPollGuess {
   @@index([createdAt])
   @@map("cup_poll_guesses")
 }
+
+// ============================================
+// MODELO POOL_WINNER (Resultados dos Bolões)
+// ============================================
+
+model PoolWinner {
+  match        String   @id @map("match")
+  result       String
+  firstWinner  String?  @map("first_winner")
+  secondWinner String?  @map("second_winner")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("pool_winners")
+}

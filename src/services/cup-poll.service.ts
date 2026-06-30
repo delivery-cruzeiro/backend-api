@@ -20,7 +20,7 @@ export class CupPollService {
 		const scoreFormat = `${cupPollHomeTeam}-${cupPollAwayTeam}`;
 		const existingGuess = await this.repository.findByInstagramHandleAndScoreFormat(
 			instagramHandle,
-			scoreFormat,
+			scoreFormat
 		);
 
 		if (existingGuess) {
@@ -36,10 +36,7 @@ export class CupPollService {
 				scoreFormat,
 			});
 		} catch (error) {
-			if (
-				error instanceof Prisma.PrismaClientKnownRequestError &&
-				error.code === 'P2002'
-			) {
+			if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
 				throw new CupPollDuplicateGuessError();
 			}
 
@@ -53,7 +50,28 @@ export class CupPollService {
 
 		return this.repository.findLatestByInstagramHandleAndScoreFormat(
 			normalizedInstagramHandle,
-			scoreFormat,
+			scoreFormat
+		);
+	}
+
+	async listResults() {
+		const poolWinners = await this.repository.findPoolWinners();
+
+		return Promise.all(
+			poolWinners.map(async poolWinner => {
+				const participants = await this.repository.findCorrectParticipants(
+					poolWinner.match,
+					poolWinner.result
+				);
+
+				return {
+					'first-winner': poolWinner.firstWinner,
+					match: poolWinner.match,
+					participants: participants.map(participant => participant.instagramHandle),
+					result: poolWinner.result,
+					'second-winner': poolWinner.secondWinner,
+				};
+			})
 		);
 	}
 }
