@@ -71,7 +71,7 @@ export class CupPollRepository {
 		`;
 	}
 
-	createPoolWinner(match: string, result: string) {
+	createPoolWinner(match: string, result: string, secondWinner: string | null) {
 		return prisma.$queryRaw<PoolWinnerRecord[]>`
 			INSERT INTO "pool_winners" (
 				"match",
@@ -83,13 +83,13 @@ export class CupPollRepository {
 				${match},
 				${result},
 				NULL,
-				NULL
+				${secondWinner}
 			)
 			ON CONFLICT ("match")
 			DO UPDATE SET
 				"result" = EXCLUDED."result",
 				"first_winner" = NULL,
-				"second_winner" = NULL
+				"second_winner" = EXCLUDED."second_winner"
 			RETURNING
 				"match",
 				"result",
