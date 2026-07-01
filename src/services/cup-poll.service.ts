@@ -116,6 +116,10 @@ export class CupPollService {
 			secondWinner
 		);
 
+		if (!matchWinner) {
+			throw new Error('Pool winner record was not returned after upsert');
+		}
+
 		return {
 			'first-winner': matchWinner.firstWinner,
 			match: matchWinner.match,
