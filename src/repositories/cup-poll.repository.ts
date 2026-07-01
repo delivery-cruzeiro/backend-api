@@ -91,28 +91,37 @@ export class CupPollRepository {
 		secondWinner: string | null
 	) {
 		return prisma.$queryRaw<PoolWinnerRecord[]>`
-			INSERT INTO "pool_winners" (
-				"match",
-				"result",
-				"first_winner",
-				"second_winner",
-				"created_at",
-				"updated_at"
+			WITH upserted AS (
+				INSERT INTO "pool_winners" (
+					"match",
+					"result",
+					"first_winner",
+					"second_winner",
+					"created_at",
+					"updated_at"
+				)
+				VALUES (
+					${match},
+					${result},
+					${firstWinner},
+					${secondWinner},
+					CURRENT_TIMESTAMP,
+					CURRENT_TIMESTAMP
+				)
+				ON CONFLICT ("match")
+				DO UPDATE SET
+					"result" = EXCLUDED."result",
+					"first_winner" = EXCLUDED."first_winner",
+					"second_winner" = EXCLUDED."second_winner",
+					"updated_at" = CURRENT_TIMESTAMP
+				RETURNING "match"
 			)
-			VALUES (
-				${match},
-				${result},
-				${firstWinner},
-				${secondWinner},
-				CURRENT_TIMESTAMP,
-				CURRENT_TIMESTAMP
-			)
-			ON CONFLICT ("match")
-			DO UPDATE SET
-				"result" = EXCLUDED."result",
-				"first_winner" = EXCLUDED."first_winner",
-				"second_winner" = EXCLUDED."second_winner",
+			UPDATE "pool_winners"
+			SET
+				"first_winner" = ${firstWinner},
+				"second_winner" = ${secondWinner},
 				"updated_at" = CURRENT_TIMESTAMP
+			WHERE "match" = (SELECT "match" FROM upserted)
 			RETURNING
 				"match",
 				"result",

@@ -422,8 +422,16 @@ export const getCupPollGuessQuerySchema = z.object({
 		.regex(/^@[A-Za-z0-9._-]{1,30}$/, 'instagramHandle must start with @'),
 });
 
+const cupPollWinnerOverrideSchema = z
+	.string()
+	.trim()
+	.regex(/^@[A-Za-z0-9._-]{1,30}$/, 'winner must start with @')
+	.nullable()
+	.optional();
+
 export const createCupPollMatchWinnerSchema = z
 	.object({
+		'first-winner': cupPollWinnerOverrideSchema,
 		match: z
 			.string()
 			.trim()
@@ -432,11 +440,7 @@ export const createCupPollMatchWinnerSchema = z
 			.string()
 			.trim()
 			.regex(/^br\([0-9]+\)-[a-z]{2}\([0-9]+\)$/, 'result must use br(y1)-xx(y2) format'),
-		'second-winner': z
-			.string()
-			.trim()
-			.regex(/^@[A-Za-z0-9._-]{1,30}$/, 'second-winner must start with @')
-			.optional(),
+		'second-winner': cupPollWinnerOverrideSchema,
 	})
 	.superRefine((input, context) => {
 		const awayTeam = input.match.split('-')[1];
