@@ -1,4 +1,7 @@
-import type { CreateCupPollGuessDTO } from '@delivery-cruzeiro/types';
+import type {
+	CreateCupPollGuessDTO,
+	CreateCupPollMatchWinnerDTO,
+} from '@delivery-cruzeiro/types';
 import { Prisma } from '@prisma/client';
 import { CupPollRepository } from '../repositories/cup-poll.repository.js';
 
@@ -61,17 +64,39 @@ export class CupPollService {
 			poolWinners.map(async poolWinner => {
 				const participants = await this.repository.findCorrectParticipants(
 					poolWinner.match,
-					poolWinner.result
+					poolWinner.result,
+					poolWinner.firstWinner
 				);
 
 				return {
 					'first-winner': poolWinner.firstWinner,
 					match: poolWinner.match,
-					participants: participants.map(participant => participant.instagramHandle),
+					participants: participants.map(
+						participant => participant.instagramHandle
+					),
 					result: poolWinner.result,
 					'second-winner': poolWinner.secondWinner,
 				};
 			})
 		);
+	}
+
+	async createMatchWinner(input: CreateCupPollMatchWinnerDTO) {
+		const match = input.match.trim().toLowerCase();
+		const result = input.result.trim().toLowerCase();
+		const [matchWinner] = await this.repository.createPoolWinner(match, result);
+		const participants = await this.repository.findCorrectParticipants(
+			matchWinner.match,
+			matchWinner.result,
+			matchWinner.firstWinner
+		);
+
+		return {
+			'first-winner': matchWinner.firstWinner,
+			match: matchWinner.match,
+			participants: participants.map(participant => participant.instagramHandle),
+			result: matchWinner.result,
+			'second-winner': matchWinner.secondWinner,
+		};
 	}
 }

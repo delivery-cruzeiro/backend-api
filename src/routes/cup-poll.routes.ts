@@ -1,7 +1,12 @@
-import { createCupPollGuessSchema, getCupPollGuessQuerySchema } from '@delivery-cruzeiro/types';
+import {
+	createCupPollMatchWinnerSchema,
+	createCupPollGuessSchema,
+	getCupPollGuessQuerySchema,
+} from '@delivery-cruzeiro/types';
 import type { FastifyInstance, RouteHandlerMethod } from 'fastify';
 import {
 	createCupPollGuess,
+	createCupPollMatchWinner,
 	getCupPollGuess,
 	getCupPollResults,
 } from '../controllers/cup-poll.controller.js';
@@ -16,7 +21,7 @@ const cupPollGuessResponseSchema = {
 	},
 };
 
-const cupPollResultResponseSchema = {
+const cupPollMatchWinnerResponseSchema = {
 	type: 'object',
 	properties: {
 		'first-winner': { anyOf: [{ type: 'string' }, { type: 'null' }] },
@@ -29,6 +34,8 @@ const cupPollResultResponseSchema = {
 		'second-winner': { anyOf: [{ type: 'string' }, { type: 'null' }] },
 	},
 };
+
+const cupPollResultResponseSchema = cupPollMatchWinnerResponseSchema;
 
 export async function cupPollRoutes(fastify: FastifyInstance) {
 	fastify.get(
@@ -124,5 +131,47 @@ export async function cupPollRoutes(fastify: FastifyInstance) {
 			},
 		},
 		createCupPollGuess as RouteHandlerMethod
+	);
+
+	await cupPollNewMatchRoutes(fastify);
+}
+
+export async function cupPollNewMatchRoutes(fastify: FastifyInstance) {
+	fastify.post(
+		'/newMatch',
+		{
+			preValidation: validateZod(createCupPollMatchWinnerSchema),
+			schema: {
+				description: 'Registrar vencedores de um jogo da promocao Palpite Certo',
+				tags: ['Cup Poll'],
+				body: {
+					type: 'object',
+					required: ['match', 'result'],
+					properties: {
+						match: { type: 'string', pattern: '^br-[a-z]{2}$' },
+						result: {
+							type: 'string',
+							pattern: '^br\\([0-9]+\\)-[a-z]{2}\\([0-9]+\\)$',
+						},
+					},
+				},
+				response: {
+					201: {
+						type: 'object',
+						properties: {
+							matchWinner: cupPollMatchWinnerResponseSchema,
+							message: { type: 'string' },
+						},
+					},
+					500: {
+						type: 'object',
+						properties: {
+							error: { type: 'string' },
+						},
+					},
+				},
+			},
+		},
+		createCupPollMatchWinner as RouteHandlerMethod
 	);
 }
