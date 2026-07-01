@@ -432,6 +432,11 @@ export const createCupPollMatchWinnerSchema = z
 			.string()
 			.trim()
 			.regex(/^br\([0-9]+\)-[a-z]{2}\([0-9]+\)$/, 'result must use br(y1)-xx(y2) format'),
+		'second-winner': z
+			.string()
+			.trim()
+			.regex(/^@[A-Za-z0-9._-]{1,30}$/, 'second-winner must start with @')
+			.optional(),
 	})
 	.superRefine((input, context) => {
 		const awayTeam = input.match.split('-')[1];

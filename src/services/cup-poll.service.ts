@@ -84,7 +84,12 @@ export class CupPollService {
 	async createMatchWinner(input: CreateCupPollMatchWinnerDTO) {
 		const match = input.match.trim().toLowerCase();
 		const result = input.result.trim().toLowerCase();
-		const [matchWinner] = await this.repository.createPoolWinner(match, result);
+		const secondWinner = input['second-winner']?.trim().toLowerCase() ?? null;
+		const [matchWinner] = await this.repository.createPoolWinner(
+			match,
+			result,
+			secondWinner
+		);
 		const participants = await this.repository.findCorrectParticipants(
 			matchWinner.match,
 			matchWinner.result,

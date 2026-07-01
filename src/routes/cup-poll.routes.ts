@@ -153,6 +153,10 @@ export async function cupPollNewMatchRoutes(fastify: FastifyInstance) {
 							type: 'string',
 							pattern: '^br\\([0-9]+\\)-[a-z]{2}\\([0-9]+\\)$',
 						},
+						'second-winner': {
+							type: 'string',
+							pattern: '^@[A-Za-z0-9._-]{1,30}$',
+						},
 					},
 				},
 				response: {
