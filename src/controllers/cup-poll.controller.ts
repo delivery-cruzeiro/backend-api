@@ -1,4 +1,8 @@
-import type { CreateCupPollGuessDTO, GetCupPollGuessQueryDTO } from '@delivery-cruzeiro/types';
+import type {
+	CreateCupPollGuessDTO,
+	CreateCupPollMatchWinnerDTO,
+	GetCupPollGuessQueryDTO,
+} from '@delivery-cruzeiro/types';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { CupPollDuplicateGuessError, CupPollService } from '../services/cup-poll.service.js';
 
@@ -59,6 +63,25 @@ export const getCupPollGuess = async (
 		});
 	} catch (error) {
 		console.error('Erro ao consultar palpite:', error);
+		return reply.status(500).send({
+			error: 'Erro interno do servidor',
+		});
+	}
+};
+
+export const createCupPollMatchWinner = async (
+	request: FastifyRequest<{ Body: CreateCupPollMatchWinnerDTO }>,
+	reply: FastifyReply
+) => {
+	try {
+		const matchWinner = await cupPollService.createMatchWinner(request.body);
+
+		return reply.status(201).send({
+			matchWinner,
+			message: 'Vencedores do jogo registrados com sucesso',
+		});
+	} catch (error) {
+		console.error('Erro ao registrar vencedores do jogo:', error);
 		return reply.status(500).send({
 			error: 'Erro interno do servidor',
 		});

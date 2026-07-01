@@ -57,13 +57,44 @@ export class CupPollRepository {
 		`;
 	}
 
-	findCorrectParticipants(match: string, result: string) {
+	findCorrectParticipants(match: string, result: string, firstWinner: string | null) {
 		return prisma.$queryRaw<CorrectParticipantRecord[]>`
 			SELECT "instagram_handle" AS "instagramHandle"
 			FROM "cup_poll_guesses"
 			WHERE "score_format" = ${match}
 				AND "score" = ${result}
+				AND (
+					${firstWinner}::TEXT IS NULL
+					OR "instagram_handle" <> ${firstWinner}
+				)
 			ORDER BY "created_at" ASC
+		`;
+	}
+
+	createPoolWinner(match: string, result: string) {
+		return prisma.$queryRaw<PoolWinnerRecord[]>`
+			INSERT INTO "pool_winners" (
+				"match",
+				"result",
+				"first_winner",
+				"second_winner"
+			)
+			VALUES (
+				${match},
+				${result},
+				NULL,
+				NULL
+			)
+			ON CONFLICT ("match")
+			DO UPDATE SET
+				"result" = EXCLUDED."result",
+				"first_winner" = NULL,
+				"second_winner" = NULL
+			RETURNING
+				"match",
+				"result",
+				"first_winner" AS "firstWinner",
+				"second_winner" AS "secondWinner"
 		`;
 	}
 }

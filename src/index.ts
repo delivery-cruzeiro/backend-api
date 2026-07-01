@@ -11,7 +11,7 @@ import { appConfigRoutes } from './routes/app-config.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { categoryRoutes } from './routes/category.routes.js';
 import { clientRoutes } from './routes/client.routes.js';
-import { cupPollRoutes } from './routes/cup-poll.routes.js';
+import { cupPollNewMatchRoutes, cupPollRoutes } from './routes/cup-poll.routes.js';
 import { menuRoutes } from './routes/menu.routes.js';
 import { invoiceRoutes } from './routes/invoice.routes.js';
 import { orderRoutes } from './routes/order.routes.js';
@@ -156,6 +156,7 @@ const startServer = async () => {
 		await fastify.register(categoryRoutes, { prefix: '/api' });
 		await fastify.register(clientRoutes, { prefix: '/api' });
 		await fastify.register(cupPollRoutes, { prefix: '/api' });
+		await fastify.register(cupPollNewMatchRoutes);
 		await fastify.register(invoiceRoutes, { prefix: '/api' });
 		await fastify.register(menuRoutes, { prefix: '/api' });
 		await fastify.register(orderRoutes, { prefix: '/api' });

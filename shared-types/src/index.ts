@@ -422,6 +422,32 @@ export const getCupPollGuessQuerySchema = z.object({
 		.regex(/^@[A-Za-z0-9._-]{1,30}$/, 'instagramHandle must start with @'),
 });
 
+export const createCupPollMatchWinnerSchema = z
+	.object({
+		match: z
+			.string()
+			.trim()
+			.regex(/^br-[a-z]{2}$/, 'match must use br-xx format'),
+		result: z
+			.string()
+			.trim()
+			.regex(/^br\([0-9]+\)-[a-z]{2}\([0-9]+\)$/, 'result must use br(y1)-xx(y2) format'),
+	})
+	.superRefine((input, context) => {
+		const awayTeam = input.match.split('-')[1];
+		const resultMatch = input.result.match(
+			/^br\([0-9]+\)-([a-z]{2})\([0-9]+\)$/,
+		);
+
+		if (resultMatch?.[1] !== awayTeam) {
+			context.addIssue({
+				code: 'custom',
+				message: 'result away team must match match away team',
+				path: ['result'],
+			});
+		}
+	});
+
 // ============================================================================
 // DTO TYPES INFERRED FROM ZOD
 // ============================================================================
@@ -460,6 +486,9 @@ export type PromotionDTO = z.infer<typeof createPromotionSchema>;
 export type UpdateSystemSettingsDTO = z.infer<typeof updateSystemSettingsSchema>;
 export type CreateCupPollGuessDTO = z.infer<typeof createCupPollGuessSchema>;
 export type GetCupPollGuessQueryDTO = z.infer<typeof getCupPollGuessQuerySchema>;
+export type CreateCupPollMatchWinnerDTO = z.infer<
+	typeof createCupPollMatchWinnerSchema
+>;
 
 // ============================================================================
 // ENTITY TYPES
