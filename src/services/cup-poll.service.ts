@@ -84,22 +84,31 @@ export class CupPollService {
 	async createMatchWinner(input: CreateCupPollMatchWinnerDTO) {
 		const match = input.match.trim().toLowerCase();
 		const result = input.result.trim().toLowerCase();
-		const secondWinner = input['second-winner']?.trim().toLowerCase() ?? null;
+		const firstWinner = await this.repository.findFirstCorrectParticipant(match, result);
+		const participants = await this.repository.findCorrectParticipants(
+			match,
+			result,
+			firstWinner?.instagramHandle ?? null
+		);
+		const participantHandles = participants.map(
+			participant => participant.instagramHandle
+		);
+		const secondWinner =
+			input['second-winner']?.trim().toLowerCase() ??
+			(participantHandles.length > 0
+				? participantHandles[Math.floor(Math.random() * participantHandles.length)]
+				: null);
 		const [matchWinner] = await this.repository.createPoolWinner(
 			match,
 			result,
+			firstWinner?.instagramHandle ?? null,
 			secondWinner
-		);
-		const participants = await this.repository.findCorrectParticipants(
-			matchWinner.match,
-			matchWinner.result,
-			matchWinner.firstWinner
 		);
 
 		return {
 			'first-winner': matchWinner.firstWinner,
 			match: matchWinner.match,
-			participants: participants.map(participant => participant.instagramHandle),
+			participants: participantHandles,
 			result: matchWinner.result,
 			'second-winner': matchWinner.secondWinner,
 		};

@@ -71,25 +71,48 @@ export class CupPollRepository {
 		`;
 	}
 
-	createPoolWinner(match: string, result: string, secondWinner: string | null) {
+	async findFirstCorrectParticipant(match: string, result: string) {
+		const participants = await prisma.$queryRaw<CorrectParticipantRecord[]>`
+			SELECT "instagram_handle" AS "instagramHandle"
+			FROM "cup_poll_guesses"
+			WHERE "score_format" = ${match}
+				AND "score" = ${result}
+			ORDER BY "created_at" ASC, "id" ASC
+			LIMIT 1
+		`;
+
+		return participants[0] ?? null;
+	}
+
+	createPoolWinner(
+		match: string,
+		result: string,
+		firstWinner: string | null,
+		secondWinner: string | null
+	) {
 		return prisma.$queryRaw<PoolWinnerRecord[]>`
 			INSERT INTO "pool_winners" (
 				"match",
 				"result",
 				"first_winner",
-				"second_winner"
+				"second_winner",
+				"created_at",
+				"updated_at"
 			)
 			VALUES (
 				${match},
 				${result},
-				NULL,
-				${secondWinner}
+				${firstWinner},
+				${secondWinner},
+				CURRENT_TIMESTAMP,
+				CURRENT_TIMESTAMP
 			)
 			ON CONFLICT ("match")
 			DO UPDATE SET
 				"result" = EXCLUDED."result",
-				"first_winner" = NULL,
-				"second_winner" = EXCLUDED."second_winner"
+				"first_winner" = EXCLUDED."first_winner",
+				"second_winner" = EXCLUDED."second_winner",
+				"updated_at" = CURRENT_TIMESTAMP
 			RETURNING
 				"match",
 				"result",
