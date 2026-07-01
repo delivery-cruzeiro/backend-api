@@ -148,14 +148,22 @@ export async function cupPollNewMatchRoutes(fastify: FastifyInstance) {
 					type: 'object',
 					required: ['match', 'result'],
 					properties: {
+						'first-winner': {
+							anyOf: [
+								{ type: 'string', pattern: '^@[A-Za-z0-9._-]{1,30}$' },
+								{ type: 'null' },
+							],
+						},
 						match: { type: 'string', pattern: '^br-[a-z]{2}$' },
 						result: {
 							type: 'string',
 							pattern: '^br\\([0-9]+\\)-[a-z]{2}\\([0-9]+\\)$',
 						},
 						'second-winner': {
-							type: 'string',
-							pattern: '^@[A-Za-z0-9._-]{1,30}$',
+							anyOf: [
+								{ type: 'string', pattern: '^@[A-Za-z0-9._-]{1,30}$' },
+								{ type: 'null' },
+							],
 						},
 					},
 				},
