@@ -6,7 +6,7 @@ import { Prisma } from '@prisma/client';
 import { CupPollRepository } from '../repositories/cup-poll.repository.js';
 
 const cupPollHomeTeam = 'br';
-const cupPollAwayTeam = 'jp';
+const cupPollAwayTeam = 'no';
 
 export class CupPollDuplicateGuessError extends Error {
 	constructor() {
@@ -30,7 +30,7 @@ export class CupPollService {
 			throw new CupPollDuplicateGuessError();
 		}
 
-		const score = `${cupPollHomeTeam}(${input.brScore})-${cupPollAwayTeam}(${input.jpScore})`;
+		const score = `${cupPollHomeTeam}(${input.brScore})-${cupPollAwayTeam}(${input.noScore})`;
 
 		try {
 			return await this.repository.create({
