@@ -9,18 +9,25 @@ import { orderEventsEmitter } from './events/order-events.emitter.js';
 import { SocketGateway } from './gateways/socket.gateway.js';
 import { appConfigRoutes } from './routes/app-config.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
+import { badgeRoutes } from './routes/badge.routes.js';
 import { categoryRoutes } from './routes/category.routes.js';
+import { carouselRoutes } from './routes/carousel.routes.js';
 import { clientRoutes } from './routes/client.routes.js';
 import { cupPollNewMatchRoutes, cupPollRoutes } from './routes/cup-poll.routes.js';
 import { menuRoutes } from './routes/menu.routes.js';
 import { invoiceRoutes } from './routes/invoice.routes.js';
 import { orderRoutes } from './routes/order.routes.js';
 import { productRoutes } from './routes/product.routes.js';
+import { printerConfigurationRoutes } from './routes/printer-configuration.routes.js';
 import { promotionRoutes } from './routes/promotion.routes.js';
+import { storeShippingRoutes } from './routes/store-shipping.routes.js';
 import { storeRoutes } from './routes/store.routes.js';
 import { subcategoryRoutes } from './routes/subcategory.routes.js';
+import { userGroupRoutes } from './routes/user-group.routes.js';
 import { userRoutes } from './routes/user.routes.js';
+import { whatsappRoutes } from './routes/whatsapp.routes.js';
 import { ensureDefaultAdminInvariant } from './services/admin-invariant.service.js';
+import { OrderWhatsAppAutomationService } from './services/order-whatsapp-automation.service.js';
 
 dotenv.config();
 
@@ -29,6 +36,12 @@ const fastify = Fastify({
 		level: process.env.LOG_LEVEL || 'info',
 	},
 });
+const orderWhatsAppAutomationService = new OrderWhatsAppAutomationService(
+	undefined,
+	undefined,
+	undefined,
+	fastify.log
+);
 
 function isAllowedOrigin(_origin?: string) {
 	return true;
@@ -78,6 +91,7 @@ function copyWebResponseHeaders(response: Response, reply: FastifyReply) {
 const startServer = async () => {
 	try {
 		await fastify.register(cors, {
+            methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 			origin: async (origin: string | undefined) => {
 				if (isAllowedOrigin(origin)) {
 					return true;
@@ -107,7 +121,7 @@ const startServer = async () => {
 		await fastify.register(multipart, {
 			limits: {
 				fileSize: 5 * 1024 * 1024,
-				files: 1,
+				files: 20,
 			},
 		});
 
@@ -130,8 +144,16 @@ const startServer = async () => {
 			eventEmitter: orderEventsEmitter,
 			httpServer: fastify.server,
 		});
+		const unsubscribeWhatsAppAutomation = orderEventsEmitter.onOrderChanged(event => {
+			orderWhatsAppAutomationService.enqueueTransition({
+				nextStatus: event.status,
+				orderId: event.order.id,
+				previousStatus: event.previousStatus,
+			});
+		});
 
 		fastify.addHook('onClose', async () => {
+			unsubscribeWhatsAppAutomation();
 			await socketGateway.close();
 		});
 
@@ -152,8 +174,10 @@ const startServer = async () => {
 		});
 
 		await fastify.register(authRoutes, { prefix: '/api' });
+		await fastify.register(badgeRoutes, { prefix: '/api' });
 		await fastify.register(appConfigRoutes, { prefix: '/api' });
 		await fastify.register(categoryRoutes, { prefix: '/api' });
+		await fastify.register(carouselRoutes, { prefix: '/api' });
 		await fastify.register(clientRoutes, { prefix: '/api' });
 		await fastify.register(cupPollRoutes, { prefix: '/api' });
 		await fastify.register(cupPollNewMatchRoutes);
@@ -161,10 +185,14 @@ const startServer = async () => {
 		await fastify.register(menuRoutes, { prefix: '/api' });
 		await fastify.register(orderRoutes, { prefix: '/api' });
 		await fastify.register(productRoutes, { prefix: '/api' });
+		await fastify.register(printerConfigurationRoutes, { prefix: '/api' });
 		await fastify.register(promotionRoutes, { prefix: '/api' });
+		await fastify.register(storeShippingRoutes, { prefix: '/api' });
 		await fastify.register(storeRoutes, { prefix: '/api' });
 		await fastify.register(subcategoryRoutes, { prefix: '/api' });
+		await fastify.register(userGroupRoutes, { prefix: '/api' });
 		await fastify.register(userRoutes, { prefix: '/api' });
+		await fastify.register(whatsappRoutes, { prefix: '/api' });
 		await ensureDefaultAdminInvariant();
 
 		fastify.all('/api/auth/*', async (request, reply) => {

@@ -1,5 +1,7 @@
 import {
 	PaymentCardType,
+	whatsAppPhoneSchema,
+	applyPromotionCouponSchema,
 	createClientAddressSchema,
 	createClientOrderSchema,
 	createClientPaymentMethodSchema,
@@ -7,6 +9,7 @@ import {
 	listClientOrdersQuerySchema,
 	updateClientAddressSchema,
 	updateClientProfileSchema,
+	type ApplyPromotionCouponDTO,
 	type ClientAddressDTO,
 	type ClientOrderDTO,
 	type ClientPaymentMethodDTO,
@@ -18,8 +21,41 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import { prisma } from '../lib/prisma.js';
 import { ClientOrderService } from '../services/client-order.service.js';
+import { CheckoutPixService } from '../services/checkout-pix.service.js';
+const checkoutPixService = new CheckoutPixService();
+
+export const sendClientCheckoutPix = async (request: AuthenticatedRequest, reply: FastifyReply) => {
+	const validation = createClientOrderSchema.safeParse(request.body);
+	if (!validation.success) return reply.status(400).send({ error: 'Dados do pedido inválidos.' });
+	const result = await checkoutPixService.send(request.user!.id, validation.data);
+	if ('error' in result) return reply.status(result.statusCode ?? 400).send(result);
+	return reply.send(result);
+};
+
+export const updateClientPhone = async (request: AuthenticatedRequest, reply: FastifyReply) => {
+	const validation = whatsAppPhoneSchema.safeParse((request.body as { phone?: unknown })?.phone);
+	if (!validation.success)
+		return reply.status(400).send({ error: 'Informe um telefone válido com DDD.' });
+	const user = await prisma.user.update({
+		where: { id: request.user!.id },
+		data: { phone: validation.data },
+		select: publicUserSelect,
+	});
+	return reply.send({ user });
+};
+import { PromotionCouponService } from '../services/promotion-coupon.service.js';
+import { StoreShippingService } from '../services/store-shipping.service.js';
+import {
+	normalizeZipCode,
+	ViaCepService,
+	ViaCepUnavailableError,
+	type AddressForZipCodeValidation,
+} from '../services/via-cep.service.js';
 
 const clientOrderService = new ClientOrderService();
+const promotionCouponService = new PromotionCouponService();
+const storeShippingService = new StoreShippingService();
+const viaCepService = new ViaCepService();
 
 const publicUserSelect = {
 	id: true,
@@ -45,12 +81,40 @@ const addressSelect = {
 	city: true,
 	state: true,
 	zipCode: true,
+	zipCodeValidated: true,
 	latitude: true,
 	longitude: true,
 	isDefault: true,
 	createdAt: true,
 	updatedAt: true,
 } as const;
+
+type AddressLookupQuery = {
+	city?: string;
+	state?: string;
+	street?: string;
+	zipCode?: string;
+};
+
+async function getZipCodeValidationError(address: AddressForZipCodeValidation) {
+	try {
+		const isValid = await viaCepService.validateAddress(address);
+
+		return isValid
+			? null
+			: {
+					code: 'INVALID_ZIP_CODE',
+					error: 'O CEP nao corresponde ao endereco informado',
+					status: 400,
+				};
+	} catch (error) {
+		if (error instanceof ViaCepUnavailableError) {
+			return { code: 'ZIP_CODE_SERVICE_UNAVAILABLE', error: error.message, status: 502 };
+		}
+
+		throw error;
+	}
+}
 
 const paymentMethodSelect = {
 	id: true,
@@ -77,6 +141,7 @@ const storeSummarySelect = {
 } as const;
 
 const orderSelect = {
+	orderNumber: true,
 	id: true,
 	userId: true,
 	addressId: true,
@@ -87,7 +152,9 @@ const orderSelect = {
 	store: {
 		select: storeSummarySelect,
 	},
+	paymentType: true,
 	paymentMethodId: true,
+	promotionId: true,
 	paymentMethod: {
 		select: paymentMethodSelect,
 	},
@@ -218,6 +285,60 @@ export const getClientAddresses = async (request: AuthenticatedRequest, reply: F
 	});
 };
 
+export const getClientAddressByZipCode = async (
+	request: FastifyRequest<{ Querystring: AddressLookupQuery }> & AuthenticatedRequest,
+	reply: FastifyReply
+) => {
+	const zipCode = normalizeZipCode(request.query.zipCode ?? '');
+
+	if (zipCode.length !== 8) {
+		return reply.status(400).send({ error: 'Informe um CEP com 8 digitos' });
+	}
+
+	try {
+		const address = await viaCepService.lookupByZipCode(zipCode);
+
+		if (!address) {
+			return reply.status(404).send({ error: 'CEP nao encontrado' });
+		}
+
+		return reply.send({ address });
+	} catch (error) {
+		if (error instanceof ViaCepUnavailableError) {
+			return reply.status(502).send({ error: error.message });
+		}
+
+		throw error;
+	}
+};
+
+export const searchClientAddressesByLocation = async (
+	request: FastifyRequest<{ Querystring: AddressLookupQuery }> & AuthenticatedRequest,
+	reply: FastifyReply
+) => {
+	const state = request.query.state?.trim().toUpperCase() ?? '';
+	const city = request.query.city?.trim() ?? '';
+	const street = request.query.street?.trim() ?? '';
+
+	if (state.length !== 2 || city.length < 3 || street.length < 3) {
+		return reply.status(400).send({
+			error: 'Informe UF, cidade e logradouro para buscar o CEP',
+		});
+	}
+
+	try {
+		const addresses = await viaCepService.searchByAddress({ city, state, street });
+
+		return reply.send({ addresses, total: addresses.length });
+	} catch (error) {
+		if (error instanceof ViaCepUnavailableError) {
+			return reply.status(502).send({ error: error.message });
+		}
+
+		throw error;
+	}
+};
+
 export const createClientAddress = async (
 	request: FastifyRequest<{ Body: ClientAddressDTO }> & AuthenticatedRequest,
 	reply: FastifyReply
@@ -234,10 +355,20 @@ export const createClientAddress = async (
 		});
 	}
 
+	const zipCodeValidationError = await getZipCodeValidationError(validation.data);
+
+	if (zipCodeValidationError) {
+		return reply.status(zipCodeValidationError.status).send({
+			code: zipCodeValidationError.code,
+			error: zipCodeValidationError.error,
+		});
+	}
+
 	const address = await prisma.address.create({
 		data: {
 			...validation.data,
 			userId: getUserId(request),
+			zipCodeValidated: true,
 		},
 		select: addressSelect,
 	});
@@ -270,16 +401,38 @@ export const updateClientAddress = async (
 			id: request.params.id,
 			userId: getUserId(request),
 		},
-		select: { id: true },
+		select: {
+			city: true,
+			id: true,
+			neighborhood: true,
+			state: true,
+			street: true,
+			zipCode: true,
+		},
 	});
 
 	if (!existingAddress) {
 		return reply.status(404).send({ error: 'Endereco nao encontrado' });
 	}
 
+	const zipCodeValidationError = await getZipCodeValidationError({
+		city: validation.data.city ?? existingAddress.city,
+		neighborhood: validation.data.neighborhood ?? existingAddress.neighborhood,
+		state: validation.data.state ?? existingAddress.state,
+		street: validation.data.street ?? existingAddress.street,
+		zipCode: validation.data.zipCode ?? existingAddress.zipCode,
+	});
+
+	if (zipCodeValidationError) {
+		return reply.status(zipCodeValidationError.status).send({
+			code: zipCodeValidationError.code,
+			error: zipCodeValidationError.error,
+		});
+	}
+
 	const address = await prisma.address.update({
 		where: { id: request.params.id },
-		data: validation.data,
+		data: { ...validation.data, zipCodeValidated: true },
 		select: addressSelect,
 	});
 
@@ -386,6 +539,85 @@ export const createClientOrder = async (
 		message: 'Pedido criado com sucesso',
 		order: result.order,
 	});
+};
+
+export const getClientShippingQuote = async (
+	request: FastifyRequest<{ Querystring: { addressId?: string; storeId?: string } }> &
+		AuthenticatedRequest,
+	reply: FastifyReply
+) => {
+	const storeId = request.query.storeId?.trim();
+
+	if (!storeId) {
+		return reply.status(400).send({ error: 'storeId e obrigatorio' });
+	}
+
+	if (!request.query.addressId) {
+		return reply.send({
+			isAvailable: true,
+			mode: 'PICKUP',
+			neighborhood: null,
+			shippingTime: 0,
+			source: 'pickup',
+			value: 0,
+		});
+	}
+
+	const address = await prisma.address.findFirst({
+		where: {
+			id: request.query.addressId,
+			userId: getUserId(request),
+		},
+		select: {
+			neighborhood: true,
+			zipCodeValidated: true,
+		},
+	});
+
+	if (!address) {
+		return reply.status(404).send({ error: 'Endereco nao encontrado' });
+	}
+
+	if (!address.zipCodeValidated) {
+		return reply.status(400).send({ error: 'Endereco com CEP nao validado' });
+	}
+
+	const quote = await storeShippingService.resolveShippingQuote({
+		neighborhood: address.neighborhood,
+		storeId,
+	});
+
+	return reply.send(quote);
+};
+
+export const applyClientPromotionCoupon = async (
+	request: FastifyRequest<{ Body: ApplyPromotionCouponDTO }> & AuthenticatedRequest,
+	reply: FastifyReply
+) => {
+	const validation = applyPromotionCouponSchema.safeParse(request.body ?? {});
+
+	if (!validation.success) {
+		const error = formatZodError(validation.error);
+
+		return reply.status(error.statusCode ?? 400).send({
+			error: error.message,
+			code: error.code,
+			details: error.details,
+		});
+	}
+
+	const result = await promotionCouponService.validateCouponForUser({
+		code: validation.data.code,
+		storeId: validation.data.storeId,
+		subtotal: validation.data.subtotal,
+		userId: getUserId(request),
+	});
+
+	if (!result.success) {
+		return reply.status(result.statusCode).send({ error: result.error });
+	}
+
+	return reply.send(result);
 };
 
 export const getClientOrders = async (

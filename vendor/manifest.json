@@ -1,0 +1,9 @@
+{
+  "format": "npm-release-snapshot",
+  "artifacts": [
+    {
+      "file": "delivery-cruzeiro-types-1.1.0.tgz",
+      "sha256": "cbf5c057a236c4c9324a2e82ff66aa7f3fde412159859477d69d0616e41d1db7"
+    }
+  ]
+}

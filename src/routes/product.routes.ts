@@ -16,10 +16,82 @@ const bulkUpdateProductsHandler = bulkUpdateProducts as unknown as RouteHandlerM
 const storeSummarySchema = {
 	type: 'object',
 	properties: {
+		additionalValue: { type: 'number', minimum: 0, maximum: 999.99 },
 		id: { type: 'string' },
 		name: { type: 'string' },
 		nickname: { type: 'string' },
 		isActive: { type: 'boolean' },
+	},
+};
+
+const productAdditionalFieldSchema = {
+	type: 'object',
+	properties: {
+		id: { type: 'string' },
+		label: { type: 'string' },
+		options: {
+			type: 'array',
+			items: { type: 'string' },
+		},
+		type: {
+			type: 'string',
+			enum: ['COMBOBOX', 'CHECKBOX', 'TEXT', 'RADIO'],
+		},
+	},
+};
+
+const productResponseSchema = {
+	type: 'object',
+	properties: {
+		id: { type: 'string' },
+		categoryId: { type: 'string' },
+		category: {
+			type: 'object',
+			properties: {
+				id: { type: 'string' },
+				name: { type: 'string' },
+			},
+		},
+		subcategoryId: { type: 'string', nullable: true },
+		subcategory: {
+			type: 'object',
+			nullable: true,
+			properties: {
+				id: { type: 'string' },
+				name: { type: 'string' },
+			},
+		},
+		name: { type: 'string' },
+		description: { type: 'string' },
+		price: { type: 'number' },
+		imageUrl: { type: 'string', nullable: true },
+		additionalFields: {
+			type: 'array',
+			items: productAdditionalFieldSchema,
+		},
+		badges: {
+			type: 'array',
+			items: {
+				type: 'object',
+				properties: {
+					id: { type: 'string' },
+					name: { type: 'string' },
+					color: { type: 'string' },
+					icon: { type: 'string', nullable: true },
+					isActive: { type: 'boolean' },
+					storeId: { type: 'string' },
+				},
+			},
+		},
+		unavailable: { type: 'boolean' },
+		order: { type: 'number' },
+		isActive: { type: 'boolean' },
+		createdAt: { type: 'string' },
+		updatedAt: { type: 'string' },
+		stores: {
+			type: 'array',
+			items: storeSummarySchema,
+		},
 	},
 };
 
@@ -36,41 +108,7 @@ export async function productRoutes(fastify: FastifyInstance) {
 						properties: {
 							products: {
 								type: 'array',
-								items: {
-									type: 'object',
-									properties: {
-										id: { type: 'string' },
-										categoryId: { type: 'string' },
-										category: {
-											type: 'object',
-											properties: {
-												id: { type: 'string' },
-												name: { type: 'string' },
-											},
-										},
-										subcategoryId: { type: 'string', nullable: true },
-										subcategory: {
-											type: 'object',
-											nullable: true,
-											properties: {
-												id: { type: 'string' },
-												name: { type: 'string' },
-											},
-										},
-										name: { type: 'string' },
-										description: { type: 'string' },
-										price: { type: 'number' },
-										imageUrl: { type: 'string', nullable: true },
-										order: { type: 'number' },
-										isActive: { type: 'boolean' },
-										createdAt: { type: 'string' },
-										updatedAt: { type: 'string' },
-										stores: {
-											type: 'array',
-											items: storeSummarySchema,
-										},
-									},
-								},
+								items: productResponseSchema,
 							},
 							total: { type: 'number' },
 						},
@@ -94,41 +132,7 @@ export async function productRoutes(fastify: FastifyInstance) {
 						type: 'object',
 						properties: {
 							message: { type: 'string' },
-							product: {
-								type: 'object',
-								properties: {
-									id: { type: 'string' },
-									categoryId: { type: 'string' },
-									category: {
-										type: 'object',
-										properties: {
-											id: { type: 'string' },
-											name: { type: 'string' },
-										},
-									},
-									subcategoryId: { type: 'string', nullable: true },
-									subcategory: {
-										type: 'object',
-										nullable: true,
-										properties: {
-											id: { type: 'string' },
-											name: { type: 'string' },
-										},
-									},
-									name: { type: 'string' },
-									description: { type: 'string' },
-									price: { type: 'number' },
-									imageUrl: { type: 'string', nullable: true },
-									order: { type: 'number' },
-									isActive: { type: 'boolean' },
-									createdAt: { type: 'string' },
-									updatedAt: { type: 'string' },
-									stores: {
-										type: 'array',
-										items: storeSummarySchema,
-									},
-								},
-							},
+							product: productResponseSchema,
 						},
 					},
 					400: {

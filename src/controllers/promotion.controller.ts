@@ -1,10 +1,12 @@
 import {
+	PromotionEligibilityType,
 	PromotionType,
+	PromotionUsageMode,
 	createPromotionSchema,
 	formatZodError,
 	type PromotionDTO,
 } from '@delivery-cruzeiro/types';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import {
@@ -27,6 +29,10 @@ const promotionSelect = {
 	maxDiscount: true,
 	startDate: true,
 	endDate: true,
+	eligibilityType: true,
+	eligibilityTarget: true,
+	usageMode: true,
+	usageLimit: true,
 	isActive: true,
 	stores: storeSummaryListArgs,
 	products: {
@@ -94,6 +100,18 @@ function buildPromotionProductData(data: PromotionDTO) {
 	}));
 }
 
+function normalizeEligibilityTarget(data: PromotionDTO) {
+	if (data.eligibilityType === PromotionEligibilityType.ALL) {
+		return Prisma.DbNull;
+	}
+
+	return data.eligibilityTarget ?? Prisma.DbNull;
+}
+
+function normalizeUsageLimit(data: PromotionDTO) {
+	return data.usageMode === PromotionUsageMode.USAGE_QUANTITY ? data.usageLimit : null;
+}
+
 export const getPromotions = async (
 	request: FastifyRequest<{ Querystring: { storeId?: string } }>,
 	reply: FastifyReply
@@ -159,12 +177,16 @@ export const createPromotion = async (
 			data: {
 				description: validation.data.description,
 				endDate: validation.data.endDate,
+				eligibilityTarget: normalizeEligibilityTarget(validation.data),
+				eligibilityType: validation.data.eligibilityType,
 				isActive: validation.data.isActive ?? true,
 				maxDiscount: validation.data.maxDiscount,
 				minPurchase: validation.data.minPurchase,
 				name: validation.data.name,
 				startDate: validation.data.startDate,
 				type: validation.data.type,
+				usageLimit: normalizeUsageLimit(validation.data),
+				usageMode: validation.data.usageMode,
 				value: validation.data.value,
 				stores: buildStoreConnect(validation.data.storeIds),
 				products:
@@ -248,12 +270,16 @@ export const updatePromotion = async (
 			data: {
 				description: validation.data.description,
 				endDate: validation.data.endDate,
+				eligibilityTarget: normalizeEligibilityTarget(validation.data),
+				eligibilityType: validation.data.eligibilityType,
 				isActive: validation.data.isActive ?? true,
 				maxDiscount: validation.data.maxDiscount,
 				minPurchase: validation.data.minPurchase,
 				name: validation.data.name,
 				startDate: validation.data.startDate,
 				type: validation.data.type,
+				usageLimit: normalizeUsageLimit(validation.data),
+				usageMode: validation.data.usageMode,
 				value: validation.data.value,
 				stores: buildStoreSet(validation.data.storeIds),
 				products: {

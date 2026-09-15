@@ -1,70 +1,9 @@
+# Single-server production is managed by the Infra repository.
+# This file provides a standalone API against an externally managed PostgreSQL.
 services:
   backend-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: delivery-cruzeiro-api:latest
-    container_name: delivery-cruzeiro-api-prod
-    restart: always
-    ports:
-      - "${PORT:-4000}:4000"
-    environment:
-      # Database
-      DATABASE_URL: ${DATABASE_URL}
-      
-      # Server
-      PORT: 4000
-      NODE_ENV: production
-      
-      # JWT
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
-      
-      # Better Auth
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
-      
-      # AbacatePay
-      ABACATEPAY_API_KEY: ${ABACATEPAY_API_KEY}
-      ABACATEPAY_API_URL: ${ABACATEPAY_API_URL}
-
-      # Cloudinary
-      CLOUDINARY_URL: ${CLOUDINARY_URL}
-      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
-      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
-      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
-      CLOUDINARY_UPLOAD_FOLDER: ${CLOUDINARY_UPLOAD_FOLDER:-delivery-cruzeiro}
-      
-      # Email (SMTP)
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS}
-      SMTP_FROM: ${SMTP_FROM}
-      
-      # WhatsApp
-      WHATSAPP_API_URL: ${WHATSAPP_API_URL}
-      WHATSAPP_API_KEY: ${WHATSAPP_API_KEY}
-      WHATSAPP_PHONE_NUMBER: ${WHATSAPP_PHONE_NUMBER}
-      
-      # CORS
-      FRONTEND_URL: ${FRONTEND_URL}
-    networks:
-      - delivery-network
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
-        window: 120s
-
-networks:
-  delivery-network:
-    driver: bridge
+    image: ghcr.io/delivery-cruzeiro/backend-api:${API_VERSION:-1.1.0}
+    build: .
+    env_file: .env
+    ports: ['${PORT:-4000}:4000']
+    restart: unless-stopped

@@ -54,6 +54,12 @@ export enum PaymentCardType {
 	DEBIT = 'DEBIT',
 }
 
+export enum SystemLayout {
+	QUIET_OPS = 'QUIET_OPS',
+	MOTION_CANVAS = 'MOTION_CANVAS',
+	CRAVE_MARKET = 'CRAVE_MARKET',
+}
+
 export enum NotificationType {
 	ORDER_CONFIRMED = 'ORDER_CONFIRMED',
 	ORDER_PREPARING = 'ORDER_PREPARING',
@@ -536,6 +542,7 @@ export interface StoreSummary {
 	nickname: string;
 	isActive: boolean;
 	isClosed?: boolean;
+	layout?: SystemLayout;
 }
 
 export interface StoreBusinessHour {

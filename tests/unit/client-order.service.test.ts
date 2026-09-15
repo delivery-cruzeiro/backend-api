@@ -2,6 +2,7 @@ import { OrderStatus, PaymentType } from '@delivery-cruzeiro/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OrderChangeEventPublisher } from '../../src/events/order-events.emitter.js';
 import { ClientOrderService } from '../../src/services/client-order.service.js';
+import type { StoreShippingService } from '../../src/services/store-shipping.service.js';
 import type {
 	AdminOrderRecord,
 	ClientOrderRecord,
@@ -139,5 +140,153 @@ describe('ClientOrderService', () => {
 			}),
 			status: OrderStatus.PENDING,
 		});
+	});
+
+	it('recalcula o adicional pelo cadastro do produto', async () => {
+		vi.mocked(repository.findActiveProductsByIds).mockResolvedValue([
+			{
+				additionalFields: [
+					{
+						additionalValue: 3.5,
+						id: 'field-1',
+						label: 'Borda recheada',
+						options: [],
+						type: 'CHECKBOX',
+					},
+				],
+				id: 'product-1',
+				price: 10,
+			},
+		]);
+		vi.mocked(repository.findActiveStoreById).mockResolvedValue({
+			addressId: 'store-address-1',
+			id: 'store-1',
+		});
+		vi.mocked(repository.createClientOrder).mockResolvedValue(createClientOrderRecord());
+		vi.mocked(repository.findAdminOrderById).mockResolvedValue(null);
+		const service = new ClientOrderService(repository, orderEvents);
+
+		await service.createOrder('user-1', {
+			items: [
+				{
+					additionalFieldValues: [
+						{
+							additionalValue: 999,
+							fieldId: 'field-1',
+							label: 'Valor adulterado',
+							type: 'CHECKBOX',
+							value: true,
+						},
+					],
+					productId: 'product-1',
+					quantity: 2,
+				},
+			],
+			paymentType: PaymentType.CASH,
+			storeId: 'store-1',
+		});
+
+		expect(repository.createClientOrder).toHaveBeenCalledWith(
+			expect.objectContaining({
+				items: [expect.objectContaining({ price: 13.5 })],
+				subtotal: 27,
+				total: 27,
+			})
+		);
+	});
+
+	it('impede pedido para bairro bloqueado pela loja', async () => {
+		vi.mocked(repository.findActiveProductsByIds).mockResolvedValue([
+			{
+				id: 'product-1',
+				price: 10,
+			},
+		]);
+		vi.mocked(repository.findActiveStoreById).mockResolvedValue({
+			addressId: 'store-address-1',
+			id: 'store-1',
+		});
+		vi.mocked(repository.findAddressForUser).mockResolvedValue({
+			city: 'Campina Grande',
+			id: 'address-1',
+			neighborhood: 'Centro',
+			state: 'PB',
+			zipCodeValidated: true,
+		});
+		const storeShippingService = {
+			resolveShippingQuote: vi.fn().mockResolvedValue({
+				isAvailable: false,
+				mode: 'DEFAULT',
+				neighborhood: 'Centro',
+				ruleId: 'rule-1',
+				shippingTime: 0,
+				source: 'blocked',
+				value: 0,
+			}),
+		} as unknown as StoreShippingService;
+		const service = new ClientOrderService(
+			repository,
+			orderEvents,
+			undefined,
+			storeShippingService
+		);
+
+		const result = await service.createOrder('user-1', {
+			addressId: 'address-1',
+			items: [{ productId: 'product-1', quantity: 1 }],
+			paymentType: PaymentType.CASH,
+			storeId: 'store-1',
+		});
+
+		expect(result).toEqual({
+			error: 'Bairro fora do mapa de entrega da loja',
+			statusCode: 400,
+			success: false,
+		});
+		expect(repository.createClientOrder).not.toHaveBeenCalled();
+	});
+
+	it('impede pedido com endereco cujo CEP nao foi validado', async () => {
+		vi.mocked(repository.findActiveProductsByIds).mockResolvedValue([
+			{
+				id: 'product-1',
+				price: 10,
+			},
+		]);
+		vi.mocked(repository.findActiveStoreById).mockResolvedValue({
+			addressId: 'store-address-1',
+			id: 'store-1',
+		});
+		vi.mocked(repository.findAddressForUser).mockResolvedValue({
+			city: 'Campina Grande',
+			id: 'address-1',
+			neighborhood: 'Centro',
+			state: 'PB',
+			zipCodeValidated: false,
+		});
+		const storeShippingService = {
+			resolveShippingQuote: vi.fn(),
+		} as unknown as StoreShippingService;
+		const service = new ClientOrderService(
+			repository,
+			orderEvents,
+			undefined,
+			storeShippingService
+		);
+
+		const result = await service.createOrder('user-1', {
+			addressId: 'address-1',
+			items: [{ productId: 'product-1', quantity: 1 }],
+			paymentType: PaymentType.CASH,
+			storeId: 'store-1',
+		});
+
+		expect(result).toEqual({
+			error: 'Endereco com CEP nao validado',
+			statusCode: 400,
+			success: false,
+		});
+		expect(storeShippingService.resolveShippingQuote).not.toHaveBeenCalled();
+		expect(repository.createClientOrder).not.toHaveBeenCalled();
 	});
 });

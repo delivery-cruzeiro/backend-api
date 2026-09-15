@@ -153,8 +153,25 @@ describe('AdminOrderService', () => {
 				id: 'order-1',
 				status: OrderStatus.CONFIRMED,
 			}),
+			previousStatus: OrderStatus.PENDING,
 			status: OrderStatus.CONFIRMED,
 		});
+	});
+
+	it('bloqueia qualquer retorno de um pedido existente para pendente', async () => {
+		vi.mocked(repository.findById).mockResolvedValue(
+			createOrderRecord({ status: OrderStatus.PREPARING })
+		);
+		const service = new AdminOrderService(repository, orderEvents);
+
+		await expect(
+			service.updateOrderStatus('order-1', {
+				status: OrderStatus.PENDING,
+			})
+		).rejects.toThrow('Pedidos existentes nao podem retornar para o status pendente');
+
+		expect(repository.updateStatus).not.toHaveBeenCalled();
+		expect(orderEvents.emitOrderChanged).not.toHaveBeenCalled();
 	});
 
 	it('bloqueia alteracao de pedido entregue ou cancelado', async () => {

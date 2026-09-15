@@ -18,6 +18,7 @@ export function serializeAdminOrder(order: AdminOrderRecord): AdminOrder {
 			...item,
 			price: Number(item.price),
 		})),
+		paymentType: order.paymentType as PaymentType | null,
 		paymentMethod: order.paymentMethod
 			? {
 					...order.paymentMethod,

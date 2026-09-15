@@ -1,9 +1,10 @@
-import { OrderStatus } from '@delivery-cruzeiro/types';
+import { OrderStatus, type PaymentType } from '@delivery-cruzeiro/types';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { storeSummarySelect } from '../services/catalog-store.utils.js';
 
 export const adminOrderSelect = {
+	orderNumber: true,
 	id: true,
 	userId: true,
 	user: {
@@ -37,7 +38,9 @@ export const adminOrderSelect = {
 	store: {
 		select: storeSummarySelect,
 	},
+	paymentType: true,
 	paymentMethodId: true,
+	promotionId: true,
 	status: true,
 	subtotal: true,
 	deliveryFee: true,
@@ -59,6 +62,10 @@ export const adminOrderSelect = {
 					name: true,
 					description: true,
 					imageUrl: true,
+					categoryId: true,
+					subcategoryId: true,
+					category: { select: { name: true } },
+					subcategory: { select: { name: true } },
 				},
 			},
 			quantity: true,
@@ -79,6 +86,7 @@ export const adminOrderSelect = {
 } satisfies Prisma.OrderSelect;
 
 export const clientOrderSelect = {
+	orderNumber: true,
 	id: true,
 	userId: true,
 	addressId: true,
@@ -104,7 +112,9 @@ export const clientOrderSelect = {
 	store: {
 		select: storeSummarySelect,
 	},
+	paymentType: true,
 	paymentMethodId: true,
+	promotionId: true,
 	paymentMethod: {
 		select: {
 			id: true,
@@ -144,6 +154,10 @@ export const clientOrderSelect = {
 					name: true,
 					description: true,
 					imageUrl: true,
+					categoryId: true,
+					subcategoryId: true,
+					category: { select: { name: true } },
+					subcategory: { select: { name: true } },
 				},
 			},
 			quantity: true,
@@ -178,7 +192,9 @@ export interface ClientOrderRepository {
 		discount: number;
 		items: Prisma.OrderItemCreateManyOrderInput[];
 		notes?: string;
+		paymentType?: PaymentType;
 		paymentMethodId?: string;
+		promotionId?: string | null;
 		status: OrderStatus;
 		storeId: string;
 		subtotal: number;
@@ -189,9 +205,18 @@ export interface ClientOrderRepository {
 	findActiveProductsByIds(
 		ids: string[],
 		storeId: string
-	): Promise<Array<{ id: string; price: unknown }>>;
+	): Promise<Array<{ additionalFields: Prisma.JsonValue; id: string; price: unknown }>>;
 	findActiveStoreById(id: string): Promise<{ addressId: string; id: string } | null>;
-	findAddressForUser(id: string, userId: string): Promise<{ id: string } | null>;
+	findAddressForUser(
+		id: string,
+		userId: string
+	): Promise<{
+		city: string;
+		id: string;
+		neighborhood: string;
+		state: string;
+		zipCodeValidated: boolean;
+	} | null>;
 	findAdminOrderById(id: string): Promise<AdminOrderRecord | null>;
 }
 
@@ -254,7 +279,9 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 		discount: number;
 		items: Prisma.OrderItemCreateManyOrderInput[];
 		notes?: string;
+		paymentType?: PaymentType;
 		paymentMethodId?: string;
+		promotionId?: string | null;
 		status: OrderStatus;
 		storeId: string;
 		subtotal: number;
@@ -272,7 +299,9 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 					},
 				},
 				notes: input.notes,
+				paymentType: input.paymentType,
 				paymentMethodId: input.paymentMethodId,
+				promotionId: input.promotionId,
 				status: input.status,
 				storeId: input.storeId,
 				subtotal: input.subtotal,
@@ -302,6 +331,7 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 				},
 			},
 			select: {
+				additionalFields: true,
 				id: true,
 				price: true,
 			},
@@ -324,7 +354,13 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 	async findAddressForUser(id: string, userId: string) {
 		return this.database.address.findFirst({
 			where: { id, userId },
-			select: { id: true },
+			select: {
+				city: true,
+				id: true,
+				neighborhood: true,
+				state: true,
+				zipCodeValidated: true,
+			},
 		});
 	}
 

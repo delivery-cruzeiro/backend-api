@@ -39,11 +39,28 @@ const productSelect = {
 	description: true,
 	price: true,
 	imageUrl: true,
+	additionalFields: true,
+	unavailable: true,
 	order: true,
 	isActive: true,
 	createdAt: true,
 	updatedAt: true,
 	stores: storeSummaryListArgs,
+	badges: {
+		select: {
+			badge: {
+				select: {
+					id: true,
+					name: true,
+					color: true,
+					icon: true,
+					isActive: true,
+					storeId: true,
+				},
+			},
+		},
+		orderBy: { createdAt: 'asc' as const },
+	},
 };
 
 type MultipartRequest = FastifyRequest & {
@@ -94,8 +111,32 @@ function parseNumberField(value: unknown) {
 	return Number(value);
 }
 
+function parseJsonArrayField(value: unknown) {
+	if (Array.isArray(value)) {
+		return value;
+	}
+
+	if (typeof value !== 'string' || value.trim() === '') {
+		return undefined;
+	}
+
+	try {
+		const parsed = JSON.parse(value);
+
+		return Array.isArray(parsed) ? parsed : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 function normalizeProductInput(fields: Record<string, unknown>) {
 	return {
+		...(fields.badgeIds !== undefined && {
+			badgeIds: parseStringArrayField(fields.badgeIds),
+		}),
+		...(fields.additionalFields !== undefined && {
+			additionalFields: parseJsonArrayField(fields.additionalFields),
+		}),
 		...(fields.categoryId !== undefined && { categoryId: fields.categoryId }),
 		...(fields.subcategoryId !== undefined && {
 			subcategoryId: fields.subcategoryId || null,
@@ -104,6 +145,9 @@ function normalizeProductInput(fields: Record<string, unknown>) {
 		...(typeof fields.imageUrl === 'string' &&
 			fields.imageUrl.trim() && { imageUrl: fields.imageUrl }),
 		...(fields.isActive !== undefined && { isActive: parseBooleanField(fields.isActive) }),
+		...(fields.unavailable !== undefined && {
+			unavailable: parseBooleanField(fields.unavailable),
+		}),
 		...(fields.name !== undefined && { name: fields.name }),
 		...(fields.order !== undefined && { order: parseNumberField(fields.order) }),
 		...(fields.price !== undefined && { price: parseNumberField(fields.price) }),
@@ -157,11 +201,47 @@ async function readProductRequest(request: FastifyRequest<{ Body: ProductDTO }>)
 	};
 }
 
-function serializeProduct(product: Awaited<ReturnType<typeof prisma.product.create>>) {
+type ProductWithBadges = {
+	badges: Array<{
+		badge: {
+			color: string;
+			icon: string | null;
+			id: string;
+			isActive: boolean;
+			name: string;
+			storeId: string;
+		};
+	}>;
+	price: unknown;
+	[key: string]: unknown;
+};
+
+function serializeProduct(product: ProductWithBadges, storeId?: string) {
+	const { badges, ...data } = product;
 	return {
-		...product,
+		...data,
+		badges: badges
+			.map(item => item.badge)
+			.filter(badge => !storeId || badge.storeId === storeId),
 		price: Number(product.price),
 	};
+}
+
+async function ensureBadgesExistForStores(badgeIds: string[], storeIds: string[]) {
+	if (badgeIds.length === 0) {
+		return;
+	}
+
+	const count = await prisma.badge.count({
+		where: {
+			id: { in: badgeIds },
+			storeId: { in: storeIds },
+		},
+	});
+
+	if (count !== badgeIds.length) {
+		throw new Error('Uma ou mais badges nao pertencem as lojas do produto');
+	}
 }
 
 export const getProducts = async (
@@ -177,7 +257,7 @@ export const getProducts = async (
 		});
 
 		return reply.send({
-			products: products.map(product => serializeProduct(product)),
+			products: products.map(product => serializeProduct(product, storeId)),
 			total: products.length,
 		});
 	} catch (error) {
@@ -207,6 +287,7 @@ export const createProduct = async (
 		}
 
 		const {
+			badgeIds = [],
 			categoryId,
 			description,
 			isActive = true,
@@ -215,15 +296,21 @@ export const createProduct = async (
 			price,
 			storeIds,
 			subcategoryId,
+			additionalFields = [],
+			unavailable = false,
 		} = validation.data;
+		const uniqueBadgeIds = [...new Set(badgeIds)];
 
 		try {
 			await ensureActiveStoresExist(storeIds);
+			await ensureBadgesExistForStores(uniqueBadgeIds, storeIds);
 		} catch (storeError) {
 			const message =
 				storeError instanceof Error ? storeError.message : 'Erro interno do servidor';
 
-			return reply.status(getStoreValidationStatus(message)).send({ error: message });
+			return reply
+				.status(message.includes('badges') ? 400 : getStoreValidationStatus(message))
+				.send({ error: message });
 		}
 
 		const category = await prisma.category.findUnique({
@@ -261,9 +348,14 @@ export const createProduct = async (
 
 		const product = await prisma.product.create({
 			data: {
+				badges: {
+					create: uniqueBadgeIds.map(badgeId => ({ badgeId })),
+				},
 				categoryId,
 				description,
 				imageUrl,
+				additionalFields,
+				unavailable,
 				isActive,
 				name,
 				order,
@@ -309,7 +401,11 @@ export const updateProduct = async (
 
 		const existingProduct = await prisma.product.findUnique({
 			where: { id },
-			select: { categoryId: true, id: true },
+			select: {
+				categoryId: true,
+				id: true,
+				stores: { select: { id: true } },
+			},
 		});
 
 		if (!existingProduct) {
@@ -357,6 +453,25 @@ export const updateProduct = async (
 			}
 		}
 
+		const nextStoreIds =
+			validation.data.storeIds ?? existingProduct.stores.map(store => store.id);
+		const uniqueBadgeIds = validation.data.badgeIds
+			? [...new Set(validation.data.badgeIds)]
+			: undefined;
+
+		if (uniqueBadgeIds) {
+			try {
+				await ensureBadgesExistForStores(uniqueBadgeIds, nextStoreIds);
+			} catch (badgeError) {
+				return reply.status(400).send({
+					error:
+						badgeError instanceof Error
+							? badgeError.message
+							: 'Badges invalidas',
+				});
+			}
+		}
+
 		const imageUrl = image
 			? await uploadImage({
 					buffer: image.buffer,
@@ -365,12 +480,21 @@ export const updateProduct = async (
 					mimetype: image.mimetype,
 				})
 			: validation.data.imageUrl;
-		const { storeIds, ...productData } = validation.data;
+		const storeIds = validation.data.storeIds;
+		const productData = { ...validation.data };
+		delete productData.badgeIds;
+		delete productData.storeIds;
 
 		const product = await prisma.product.update({
 			where: { id },
 			data: {
 				...productData,
+				...(uniqueBadgeIds && {
+					badges: {
+						deleteMany: {},
+						create: uniqueBadgeIds.map(badgeId => ({ badgeId })),
+					},
+				}),
 				...(productData.categoryId &&
 					productData.subcategoryId === undefined && { subcategoryId: null }),
 				stores: buildStoreSet(storeIds),

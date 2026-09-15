@@ -1,8 +1,11 @@
 {
   "compilerOptions": {
-      "module": "NodeNext",
-      "target": "ES2023",
-    "lib": ["ES2022", "DOM"],
+    "module": "NodeNext",
+    "target": "ES2023",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "moduleResolution": "NodeNext",
     "resolveJsonModule": true,
     "allowJs": true,
@@ -23,6 +26,11 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

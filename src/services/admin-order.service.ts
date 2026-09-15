@@ -39,6 +39,12 @@ function assertOrderStatusTransition(currentStatus: OrderStatus, nextStatus: Ord
 		throw new OrderStatusTransitionError('Apenas pedidos pendentes podem ser cancelados');
 	}
 
+	if (nextStatus === OrderStatus.PENDING && currentStatus !== OrderStatus.PENDING) {
+		throw new OrderStatusTransitionError(
+			'Pedidos existentes nao podem retornar para o status pendente'
+		);
+	}
+
 	if (nextStatus === OrderStatus.DELIVERED && currentStatus !== OrderStatus.ON_THE_WAY) {
 		throw new OrderStatusTransitionError('Apenas pedidos a caminho podem ser entregues');
 	}
@@ -85,9 +91,9 @@ export class AdminOrderService {
 		this.orderEvents.emitOrderChanged({
 			action: 'update',
 			order: serializedOrder,
+			previousStatus: currentOrder.status as OrderStatus,
 			status: serializedOrder.status,
 		});
-
 		return serializedOrder;
 	}
 }

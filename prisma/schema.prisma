@@ -27,15 +27,18 @@ model User {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  addresses      Address[]
-  paymentMethods PaymentMethod[]
-  orders         Order[]
-  notifications  Notification[]
-  points         Point[]
-  reviews        Review[]
-  favorites      Favorite[]
-  ownedStores    Store[]         @relation("StoreOwner")
-  stores         Store[]         @relation("UserStores")
+  addresses        Address[]
+  paymentMethods   PaymentMethod[]
+  orders           Order[]
+  notifications    Notification[]
+  points           Point[]
+  reviews          Review[]
+  favorites        Favorite[]
+  groupMemberships UserGroupMember[]
+  ownedStores      Store[]           @relation("StoreOwner")
+  stores           Store[]           @relation("UserStores")
+  createdCarousels Carousel[]        @relation("CarouselCreator")
+  updatedCarousels Carousel[]        @relation("CarouselUpdater")
 
   // Better Auth fields
   accounts Account[]
@@ -111,26 +114,33 @@ enum UserGender {
   PREFER_NOT_TO_SAY
 }
 
+enum SystemLayout {
+  QUIET_OPS
+  MOTION_CANVAS
+  CRAVE_MARKET
+}
+
 // ============================================
 // MODELO ADDRESS (Endereços)
 // ============================================
 
 model Address {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  street       String
-  number       String
-  complement   String?
-  neighborhood String
-  city         String
-  state        String
-  zipCode      String
-  latitude     Float?
-  longitude    Float?
-  isDefault    Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  street           String
+  number           String
+  complement       String?
+  neighborhood     String
+  city             String
+  state            String
+  zipCode          String
+  zipCodeValidated Boolean  @default(false) @map("zip_code_validated")
+  latitude         Float?
+  longitude        Float?
+  isDefault        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   orders Order[]
   stores Store[] @relation("StoreAddress")
@@ -143,35 +153,123 @@ model Address {
 // ============================================
 
 model Store {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name         String
   nickname     String
-  isActive     Boolean   @default(true) @map("is_active")
-  phoneNumber  String?   @map("phone_number")
-  openHour     DateTime? @map("open_hour") @db.Time(0)
-  closeHour    DateTime? @map("close_hour") @db.Time(0)
-  weekDaysOpen Json?     @map("week_days_open")
-  addressId    String    @map("address_id")
-  address      Address   @relation("StoreAddress", fields: [addressId], references: [id], onDelete: Restrict)
-  ownerId      String    @map("owner_id")
-  owner        User      @relation("StoreOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  isActive     Boolean      @default(true) @map("is_active")
+  layout       SystemLayout @default(MOTION_CANVAS) @map("system_layout")
+  phoneNumber  String?      @map("phone_number")
+  openHour     DateTime?    @map("open_hour") @db.Time(0)
+  closeHour    DateTime?    @map("close_hour") @db.Time(0)
+  weekDaysOpen Json?        @map("week_days_open")
+  addressId    String       @map("address_id")
+  address      Address      @relation("StoreAddress", fields: [addressId], references: [id], onDelete: Restrict)
+  ownerId      String       @map("owner_id")
+  owner        User         @relation("StoreOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   cnpj         String?
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
 
-  businessHours StoreBusinessHour[]
-  categories    Category[]          @relation("StoreCategories")
-  menus         Menu[]              @relation("StoreMenus")
-  orders        Order[]
-  products      Product[]           @relation("StoreProducts")
-  promotions    Promotion[]         @relation("StorePromotions")
-  subcategories Subcategory[]       @relation("StoreSubcategories")
-  users         User[]              @relation("UserStores")
+  businessHours             StoreBusinessHour[]
+  badges                    Badge[]
+  carousels                 Carousel[]
+  categories                Category[]                  @relation("StoreCategories")
+  menus                     Menu[]                      @relation("StoreMenus")
+  orders                    Order[]
+  products                  Product[]                   @relation("StoreProducts")
+  printers                  PrinterConfiguration[]
+  promotions                Promotion[]                 @relation("StorePromotions")
+  shippingRules             StoreShipping[]
+  neighborhoodShippingRules StoreNeighborhoodShipping[]
+  subcategories             Subcategory[]               @relation("StoreSubcategories")
+  users                     User[]                      @relation("UserStores")
 
   @@index([addressId])
   @@index([isActive])
   @@index([ownerId])
   @@map("stores")
+}
+
+model Carousel {
+  id               String   @id @default(cuid())
+  name             String
+  isActive         Boolean  @default(false) @map("is_active")
+  content          Json
+  storeId          String   @map("store_id") @db.Uuid
+  store            Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdById      String   @map("created_by_id")
+  createdBy        User     @relation("CarouselCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  lastModifiedById String   @map("last_modified_by_id")
+  lastModifiedBy   User     @relation("CarouselUpdater", fields: [lastModifiedById], references: [id], onDelete: Restrict)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([storeId, updatedAt])
+  @@index([createdById])
+  @@index([lastModifiedById])
+  @@map("carousels")
+}
+
+model Badge {
+  id        String   @id @default(cuid())
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  color     String
+  icon      String?
+  storeId   String   @map("store_id") @db.Uuid
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  products ProductBadge[]
+
+  @@unique([storeId, name])
+  @@index([storeId, isActive])
+  @@map("badges")
+}
+
+model StoreShipping {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storeId      String   @map("store_id") @db.Uuid
+  store        Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name         String
+  value        Decimal  @db.Decimal(10, 2)
+  shippingTime Int      @map("shipping_time")
+  createdAt    DateTime @default(now()) @map("created_at")
+  isActive     Boolean  @default(true) @map("is_active")
+
+  neighborhoodRules StoreNeighborhoodShipping[]
+
+  @@unique([storeId, name])
+  @@index([isActive])
+  @@index([storeId])
+  @@map("store-shipping")
+}
+
+model StoreNeighborhoodShipping {
+  id           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storeId      String             @map("store_id") @db.Uuid
+  store        Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  neighborhood String
+  isBlocked    Boolean            @default(false) @map("is_blocked")
+  mode         ShippingChargeMode
+  shippingId   String?            @map("shipping_id") @db.Uuid
+  shipping     StoreShipping?     @relation(fields: [shippingId], references: [id], onDelete: SetNull)
+  value        Decimal?           @db.Decimal(10, 2)
+  shippingTime Int?               @map("shipping_time")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  @@unique([storeId, neighborhood])
+  @@index([shippingId])
+  @@index([storeId])
+  @@map("store_neighborhood_shipping")
+}
+
+enum ShippingChargeMode {
+  DEFAULT
+  MANUAL
+  TEMPLATE
 }
 
 // ============================================
@@ -252,6 +350,7 @@ model Category {
 
   menus         Menu[]        @relation("MenuCategories")
   products      Product[]
+  printerCategories PrinterCategory[]
   stores        Store[]       @relation("StoreCategories")
   subcategories Subcategory[]
 
@@ -297,6 +396,7 @@ model Subcategory {
 
   menus    Menu[]    @relation("MenuSubcategories")
   products Product[]
+  printerSubcategories PrinterSubcategory[]
   stores   Store[]   @relation("StoreSubcategories")
 
   @@unique([categoryId, name])
@@ -305,25 +405,82 @@ model Subcategory {
 }
 
 // ============================================
+// CONFIGURACAO DE IMPRESSORAS
+// ============================================
+
+model PrinterConfiguration {
+  id               String                  @id @default(cuid())
+  storeId          String                  @map("store_id") @db.Uuid
+  store            Store                   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  connectionId     String                  @map("connection_id")
+  name             String
+  connectionStatus PrinterConnectionStatus @default(DISCONNECTED) @map("connection_status")
+  isPrimary        Boolean                 @default(false) @map("is_primary")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
+
+  categories    PrinterCategory[]
+  subcategories PrinterSubcategory[]
+
+  @@unique([storeId, connectionId])
+  @@unique([storeId, name])
+  @@index([storeId, isPrimary])
+  @@map("printer_configurations")
+}
+
+model PrinterCategory {
+  printerId String               @map("printer_id")
+  printer   PrinterConfiguration @relation(fields: [printerId], references: [id], onDelete: Cascade)
+  categoryId String              @map("category_id")
+  category   Category            @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdAt  DateTime            @default(now()) @map("created_at")
+
+  @@id([printerId, categoryId])
+  @@index([categoryId])
+  @@map("printer_categories")
+}
+
+model PrinterSubcategory {
+  printerId    String               @map("printer_id")
+  printer      PrinterConfiguration @relation(fields: [printerId], references: [id], onDelete: Cascade)
+  subcategoryId String              @map("subcategory_id")
+  subcategory   Subcategory         @relation(fields: [subcategoryId], references: [id], onDelete: Cascade)
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  @@id([printerId, subcategoryId])
+  @@index([subcategoryId])
+  @@map("printer_subcategories")
+}
+
+enum PrinterConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
+// ============================================
 // MODELO PRODUCT (Produtos)
 // ============================================
 
 model Product {
-  id            String       @id @default(cuid())
-  categoryId    String
-  category      Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  subcategoryId String?
-  subcategory   Subcategory? @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
-  name          String
-  description   String
-  price         Decimal      @db.Decimal(10, 2)
-  imageUrl      String?
-  isActive      Boolean      @default(true)
-  order         Int          @default(0)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id               String       @id @default(cuid())
+  categoryId       String
+  category         Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  subcategoryId    String?
+  subcategory      Subcategory? @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
+  name             String
+  description      String
+  price            Decimal      @db.Decimal(10, 2)
+  imageUrl         String?
+  additionalFields Json         @default("[]") @map("additional_fields")
+  unavailable      Boolean      @default(false)
+  isActive         Boolean      @default(true)
+  order            Int          @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   orderItems OrderItem[]
+  badges     ProductBadge[]
   promotions PromotionProduct[]
   reviews    Review[]
   favorites  Favorite[]
@@ -334,11 +491,26 @@ model Product {
   @@index([isActive])
 }
 
+model ProductBadge {
+  id        String   @id @default(cuid())
+  productId String   @map("product_id")
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  badgeId   String   @map("badge_id")
+  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([productId, badgeId])
+  @@index([badgeId])
+  @@index([productId])
+  @@map("product_badges")
+}
+
 // ============================================
 // MODELO ORDER (Pedidos)
 // ============================================
 
 model Order {
+  paymentType       PaymentType?
   id                String         @id @default(cuid())
   orderNumber       Int            @unique @default(autoincrement())
   userId            String?
@@ -349,6 +521,8 @@ model Order {
   store             Store?         @relation(fields: [storeId], references: [id], onDelete: SetNull)
   paymentMethodId   String?
   paymentMethod     PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  promotionId       String?        @map("promotion_id")
+  promotion         Promotion?     @relation(fields: [promotionId], references: [id], onDelete: SetNull)
   status            OrderStatus    @default(PENDING)
   subtotal          Decimal        @db.Decimal(10, 2)
   deliveryFee       Decimal        @db.Decimal(10, 2)
@@ -368,6 +542,7 @@ model Order {
   @@index([storeId])
   @@index([status])
   @@index([createdAt])
+  @@index([promotionId])
 }
 
 enum OrderStatus {
@@ -377,6 +552,33 @@ enum OrderStatus {
   ON_THE_WAY // A caminho
   DELIVERED // Entregue
   CANCELLED // Cancelado
+}
+
+model WhatsAppMessageConfiguration {
+  id        String                   @id @default(cuid())
+  location  WhatsAppMessageLocation
+  operation WhatsAppMessageOperation
+  template  Json
+  isActive  Boolean                  @default(true) @map("is_active")
+  createdAt DateTime                 @default(now()) @map("created_at")
+  updatedAt DateTime                 @updatedAt @map("updated_at")
+
+  @@unique([location, operation])
+  @@index([location, operation, isActive])
+  @@map("whatsapp_message_configurations")
+}
+
+enum WhatsAppMessageLocation {
+  PIX_ONLINE
+  PENDING
+  CONFIRMED
+  PREPARING
+  ON_THE_WAY
+}
+
+enum WhatsAppMessageOperation {
+  ENTRY
+  EXIT
 }
 
 // ============================================
@@ -494,30 +696,80 @@ enum PaymentStatus {
 // ============================================
 
 model Promotion {
-  id          String        @id @default(cuid())
-  name        String
-  description String?
-  type        PromotionType
-  value       Decimal       @db.Decimal(10, 2)
-  minPurchase Decimal?      @db.Decimal(10, 2)
-  maxDiscount Decimal?      @db.Decimal(10, 2)
-  startDate   DateTime
-  endDate     DateTime
-  isActive    Boolean       @default(true)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id                String                   @id @default(cuid())
+  name              String
+  description       String?
+  type              PromotionType
+  value             Decimal                  @db.Decimal(10, 2)
+  minPurchase       Decimal?                 @db.Decimal(10, 2)
+  maxDiscount       Decimal?                 @db.Decimal(10, 2)
+  startDate         DateTime
+  endDate           DateTime
+  eligibilityType   PromotionEligibilityType @default(ALL) @map("eligibility_type")
+  eligibilityTarget Json?                    @map("eligibility_target")
+  usageMode         PromotionUsageMode       @default(AVAILABLE_PERIOD) @map("usage_mode")
+  usageLimit        Int?                     @map("usage_limit")
+  isActive          Boolean                  @default(true)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
 
   products PromotionProduct[]
   stores   Store[]            @relation("StorePromotions")
+  orders   Order[]
 
+  @@index([eligibilityType])
   @@index([isActive])
   @@index([startDate, endDate])
+  @@index([usageMode])
 }
 
 enum PromotionType {
   PERCENTAGE
   FIXED_AMOUNT
   BUY_X_GET_Y
+}
+
+enum PromotionEligibilityType {
+  ALL
+  GROUP
+  SINGLE_USER
+}
+
+enum PromotionUsageMode {
+  USAGE_QUANTITY
+  AVAILABLE_PERIOD
+}
+
+model UserGroup {
+  id        String        @id @default(cuid())
+  name      String        @unique
+  mode      UserGroupMode @default(MANUAL)
+  rules     Json          @default("[]")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  members UserGroupMember[]
+
+  @@map("user_groups")
+}
+
+enum UserGroupMode {
+  MANUAL
+  RULE
+}
+
+model UserGroupMember {
+  id        String    @id @default(cuid())
+  groupId   String    @map("group_id")
+  userId    String    @map("user_id")
+  group     UserGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+  @@map("user_group_members")
 }
 
 model PromotionProduct {

@@ -1,4 +1,12 @@
-import { OrderStatus, PaymentType, type ClientOrderDTO } from '@delivery-cruzeiro/types';
+import {
+	OrderStatus,
+	PaymentType,
+	ProductAdditionalFieldType,
+	productAdditionalFieldSchema,
+	type ClientOrderDTO,
+	type ProductAdditionalFieldDTO,
+	type ProductAdditionalFieldValueDTO,
+} from '@delivery-cruzeiro/types';
 import {
 	orderEventsEmitter,
 	type OrderChangeEventPublisher,
@@ -8,6 +16,8 @@ import {
 	type ClientOrderRepository,
 } from '../repositories/order.repository.js';
 import { serializeAdminOrder, serializeClientOrder } from './order-serialization.service.js';
+import { PromotionCouponService } from './promotion-coupon.service.js';
+import { StoreShippingService } from './store-shipping.service.js';
 
 type CreateClientOrderResult =
 	| {
@@ -16,18 +26,112 @@ type CreateClientOrderResult =
 	  }
 	| {
 			error: string;
-			statusCode: 400 | 404;
+			statusCode: 400 | 403 | 404 | 409;
 			success: false;
 	  };
+
+function formatAdditionalValue(value: number) {
+	return value.toLocaleString('pt-BR', { currency: 'BRL', style: 'currency' });
+}
+
+function resolveAdditionalFields(
+	configuredFieldsValue: unknown,
+	selectedValues: ProductAdditionalFieldValueDTO[] = []
+): { error: string; success: false } | { additionalValue: number; notes: string; success: true } {
+	const configuredFieldsInput = configuredFieldsValue ?? [];
+	if (!Array.isArray(configuredFieldsInput)) {
+		return {
+			error: 'Configuracao de campos adicionais do produto invalida',
+			success: false,
+		};
+	}
+
+	const configuredFieldsList: ProductAdditionalFieldDTO[] = [];
+	for (const configuredFieldValue of configuredFieldsInput) {
+		const configuredField = productAdditionalFieldSchema.safeParse(configuredFieldValue);
+		if (!configuredField.success) {
+			return {
+				error: 'Configuracao de campos adicionais do produto invalida',
+				success: false,
+			};
+		}
+		configuredFieldsList.push(configuredField.data);
+	}
+
+	const configuredFields = new Map(configuredFieldsList.map(field => [field.id, field]));
+	const selectedIds = new Set<string>();
+	const normalizedValues: ProductAdditionalFieldValueDTO[] = [];
+
+	for (const selectedValue of selectedValues) {
+		if (selectedIds.has(selectedValue.fieldId)) {
+			return { error: 'Campo adicional duplicado no produto', success: false };
+		}
+
+		selectedIds.add(selectedValue.fieldId);
+		const configuredField = configuredFields.get(selectedValue.fieldId);
+
+		if (!configuredField || configuredField.type !== selectedValue.type) {
+			return { error: 'Campo adicional do produto nao encontrado', success: false };
+		}
+
+		const value = selectedValue.value;
+		const isValidValue =
+			configuredField.type === ProductAdditionalFieldType.CHECKBOX
+				? value === true
+				: typeof value === 'string' &&
+					value.trim().length > 0 &&
+					(configuredField.type === ProductAdditionalFieldType.TEXT ||
+						configuredField.options.includes(value));
+
+		if (!isValidValue) {
+			return { error: 'Valor de campo adicional do produto invalido', success: false };
+		}
+
+		normalizedValues.push({
+			additionalValue: configuredField.additionalValue,
+			fieldId: configuredField.id,
+			label: configuredField.label,
+			type: configuredField.type,
+			value,
+		});
+	}
+
+	const additionalValue = normalizedValues.reduce(
+		(total, field) => total + Number(field.additionalValue ?? 0),
+		0
+	);
+	const notes = normalizedValues
+		.map(field => {
+			const displayedValue =
+				field.type === ProductAdditionalFieldType.CHECKBOX
+					? field.label
+					: `${field.label}: ${field.value}`;
+			const price = Number(field.additionalValue ?? 0);
+			return price > 0
+				? `${displayedValue} (+${formatAdditionalValue(price)})`
+				: displayedValue;
+		})
+		.join('\n');
+
+	return { additionalValue, notes, success: true };
+}
 
 export class ClientOrderService {
 	constructor(
 		private readonly orderRepository: ClientOrderRepository = new PrismaClientOrderRepository(),
-		private readonly orderEvents: OrderChangeEventPublisher = orderEventsEmitter
+		private readonly orderEvents: OrderChangeEventPublisher = orderEventsEmitter,
+		private readonly promotionCouponService: PromotionCouponService = new PromotionCouponService(),
+		private readonly storeShippingService: StoreShippingService = new StoreShippingService()
 	) {}
 
-	async createOrder(userId: string, dto: ClientOrderDTO): Promise<CreateClientOrderResult> {
-		const { addressId, items, notes, paymentMethodId, paymentType, storeId } = dto;
+	async prepareOrder(
+		userId: string,
+		dto: ClientOrderDTO
+	): Promise<
+		| Extract<CreateClientOrderResult, { success: false }>
+		| { success: true; data: Parameters<ClientOrderRepository['createClientOrder']>[0] }
+	> {
+		const { addressId, items, notes, paymentMethodId, paymentType, promotionId, storeId } = dto;
 		const store = await this.orderRepository.findActiveStoreById(storeId);
 
 		if (!store) {
@@ -38,16 +142,24 @@ export class ClientOrderService {
 			};
 		}
 
-		if (addressId) {
-			const address = await this.orderRepository.findAddressForUser(addressId, userId);
+		const address = addressId
+			? await this.orderRepository.findAddressForUser(addressId, userId)
+			: null;
 
-			if (!address) {
-				return {
-					error: 'Endereco nao encontrado',
-					statusCode: 404,
-					success: false,
-				};
-			}
+		if (addressId && !address) {
+			return {
+				error: 'Endereco nao encontrado',
+				statusCode: 404,
+				success: false,
+			};
+		}
+
+		if (address && !address.zipCodeValidated) {
+			return {
+				error: 'Endereco com CEP nao validado',
+				statusCode: 400,
+				success: false,
+			};
 		}
 
 		if (paymentMethodId) {
@@ -91,38 +203,104 @@ export class ClientOrderService {
 			};
 		}
 
-		const orderItems = items.map(item => {
-			const product = productsById.get(item.productId);
-			const price = Number(product?.price ?? 0);
+		const orderItems: Array<{
+			notes?: string;
+			price: number;
+			productId: string;
+			quantity: number;
+		}> = [];
 
-			return {
-				notes: item.notes,
+		for (const item of items) {
+			const product = productsById.get(item.productId);
+			const additionalFields = resolveAdditionalFields(
+				product?.additionalFields,
+				item.additionalFieldValues
+			);
+
+			if (!additionalFields.success) {
+				return {
+					error: additionalFields.error,
+					statusCode: 400,
+					success: false,
+				};
+			}
+
+			const price = Number(product?.price ?? 0) + additionalFields.additionalValue;
+			const itemNotes = [item.notes?.trim(), additionalFields.notes]
+				.filter(Boolean)
+				.join('\n');
+
+			orderItems.push({
+				notes: itemNotes || undefined,
 				price,
 				productId: item.productId,
 				quantity: item.quantity,
-			};
-		});
+			});
+		}
 		const subtotal = orderItems.reduce(
 			(total, item) => total + Number(item.price) * item.quantity,
 			0
 		);
-		const deliveryFee = 0;
-		const discount = 0;
+		const shippingQuote = address
+			? await this.storeShippingService.resolveShippingQuote({
+					neighborhood: address.neighborhood,
+					storeId,
+				})
+			: null;
+
+		if (shippingQuote && !shippingQuote.isAvailable) {
+			return {
+				error: 'Bairro fora do mapa de entrega da loja',
+				statusCode: 400,
+				success: false,
+			};
+		}
+
+		const deliveryFee = shippingQuote?.value ?? 0;
+		let discount = 0;
+
+		if (promotionId) {
+			const couponResult = await this.promotionCouponService.validateCouponForUser({
+				promotionId,
+				storeId,
+				subtotal,
+				userId,
+			});
+
+			if (!couponResult.success) {
+				return couponResult;
+			}
+
+			discount = couponResult.discount;
+		}
+
 		const total = subtotal + deliveryFee - discount;
 
-		const order = await this.orderRepository.createClientOrder({
-			addressId: addressId || store.addressId,
-			deliveryFee,
-			discount,
-			items: orderItems,
-			notes,
-			paymentMethodId,
-			status: OrderStatus.PENDING,
-			storeId,
-			subtotal,
-			total,
-			userId,
-		});
+		return {
+			success: true,
+			data: {
+				addressId: addressId || store.addressId,
+				deliveryFee,
+				discount,
+				items: orderItems,
+				notes,
+				paymentMethodId,
+				paymentType,
+				promotionId,
+				status: OrderStatus.PENDING,
+				storeId,
+				subtotal,
+				total,
+				userId,
+			},
+		};
+	}
+
+	async createOrder(userId: string, dto: ClientOrderDTO): Promise<CreateClientOrderResult> {
+		const prepared = await this.prepareOrder(userId, dto);
+		if (!prepared.success) return prepared;
+		const order = await this.orderRepository.createClientOrder(prepared.data);
+		await this.promotionCouponService.consumeCouponUsage(dto.promotionId);
 		const adminOrder = await this.orderRepository.findAdminOrderById(order.id);
 
 		if (adminOrder) {

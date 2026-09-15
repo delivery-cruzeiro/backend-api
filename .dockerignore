@@ -1,40 +1,10 @@
-# Dependencies
-node_modules
 **/node_modules
-.pnpm-store
+**/node_modules.*
 **/.pnpm-store
-npm-debug.log
-yarn-error.log
-pnpm-debug.log
-
-# Environment files
-.env
-.env.local
-.env.*.local
-
-# Git
-.git
-.gitignore
-
-# IDE
-.vscode
-.idea
-*.swp
-*.swo
-*~
-
-# Build artifacts
-dist
 **/dist
-build
-**/build
-
-# Tests
-coverage
-.nyc_output
-
-# Misc
-.DS_Store
-*.pem
-*.log
-
+**/coverage
+**/.git
+**/.env
+**/.env.*
+**/*.log
+**/*.pem

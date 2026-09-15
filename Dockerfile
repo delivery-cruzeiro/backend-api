@@ -1,52 +1,37 @@
-FROM node:22-alpine AS builder
-
-WORKDIR /workspace
-
-RUN npm install -g pnpm
-
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
-COPY shared-types/package.json ./shared-types/package.json
-
-RUN pnpm install --ignore-scripts --no-strict-peer-dependencies
-
+# syntax=docker/dockerfile:1
+FROM node:22.22.0-alpine AS dependencies
+WORKDIR /app
+RUN npm install -g pnpm@11.24.0
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY vendor/ ./vendor/
+ENV CI=true HUSKY=0
+RUN --mount=type=cache,id=pnpm-api,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
+FROM dependencies AS build
 COPY tsconfig.json prisma.config.ts ./
 COPY prisma ./prisma
 COPY src ./src
-COPY shared-types ./shared-types
-
-RUN pnpm --filter @delivery-cruzeiro/types build
-
-RUN DATABASE_URL="postgresql://postgres:postgres@localhost:5432/delivery_cruzeiro?schema=public" pnpm run prisma:generate
-
-RUN pnpm run build
-
-FROM node:22-alpine AS production
-
-WORKDIR /workspace
-
-ENV TMPDIR=/tmp
-ENV XDG_CACHE_HOME=/tmp/.cache
-ENV npm_config_cache=/tmp/.npm
-ENV PNPM_HOME=/tmp/.pnpm
-ENV PNPM_STORE_DIR=/tmp/.pnpm-store
-
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S -u 1001 -G nodejs nodejs
-
-COPY --from=builder --chown=nodejs:nodejs /workspace/node_modules ./node_modules
-COPY --from=builder --chown=nodejs:nodejs /workspace/package.json ./package.json
-COPY --from=builder --chown=nodejs:nodejs /workspace/dist ./dist
-COPY --from=builder --chown=nodejs:nodejs /workspace/prisma ./prisma
-COPY --from=builder --chown=nodejs:nodejs /workspace/prisma.config.ts ./prisma.config.ts
-COPY --from=builder --chown=nodejs:nodejs /workspace/shared-types ./shared-types
-COPY --chown=nodejs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
-
-RUN chmod +x ./docker-entrypoint.sh && \
-    chown nodejs:nodejs /workspace
-
-USER nodejs
-
-EXPOSE 10000
-
+RUN DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm prisma:generate
+RUN pnpm build
+FROM node:22.22.0-alpine AS production
+WORKDIR /app
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=4000
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/prisma ./prisma
+COPY --from=build --chown=node:node /app/prisma.config.ts ./
+COPY --from=build --chown=node:node /app/package.json ./
+COPY --chown=node:node docker-entrypoint.sh ./
+COPY --chown=node:node scripts/migrate.mjs ./scripts/migrate.mjs
+RUN chmod +x docker-entrypoint.sh
+USER node
+EXPOSE 4000
+HEALTHCHECK --interval=30s --timeout=5s CMD node -e "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["node", "dist/index.js"]
+
+FROM build AS verification
+COPY tests ./tests
+COPY scripts/verify.mjs ./scripts/verify.mjs
+RUN node scripts/verify.mjs
+
+FROM production AS final

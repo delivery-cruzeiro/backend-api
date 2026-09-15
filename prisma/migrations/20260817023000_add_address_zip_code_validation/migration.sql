@@ -1,0 +1,2 @@
+ALTER TABLE "Address"
+    ADD COLUMN "zip_code_validated" BOOLEAN NOT NULL DEFAULT FALSE;

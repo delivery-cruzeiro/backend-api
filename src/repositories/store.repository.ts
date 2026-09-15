@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { getFiscalCityCode } from '../services/fiscal/shared/fiscal-location-codes.js';
 
 export type StoreOptionRecord = {
 	id: string;
@@ -6,21 +7,66 @@ export type StoreOptionRecord = {
 	nickname: string;
 	isActive: boolean;
 	isClosed: boolean;
+	layout: 'QUIET_OPS' | 'MOTION_CANVAS' | 'CRAVE_MARKET';
+	address: {
+		city: string;
+		cityCode: string | null;
+		complement: string | null;
+		id: string;
+		latitude: number | null;
+		longitude: number | null;
+		neighborhood: string;
+		number: string;
+		state: string;
+		street: string;
+		zipCode: string;
+	};
 };
 
 export class StoreRepository {
 	async listActiveOptions() {
-		return prisma.$queryRaw<StoreOptionRecord[]>`
+		const stores = await prisma.store.findMany({
+			orderBy: [{ nickname: 'asc' }, { name: 'asc' }],
+			select: {
+				address: {
+					select: {
+						city: true,
+						complement: true,
+						id: true,
+						latitude: true,
+						longitude: true,
+						neighborhood: true,
+						number: true,
+						state: true,
+						street: true,
+						zipCode: true,
+					},
+				},
+				id: true,
+				isActive: true,
+				layout: true,
+				name: true,
+				nickname: true,
+			},
+			where: { isActive: true },
+		});
+		const closedRows = await prisma.$queryRaw<Array<{ id: string; isClosed: boolean }>>`
 			SELECT
 				"id"::TEXT AS "id",
-				"name",
-				"nickname",
-				"is_active" AS "isActive",
-				is_store_closed("id") AS "isClosed"
+				is_store_closed("id", NOW()) AS "isClosed"
 			FROM "stores"
 			WHERE "is_active" = TRUE
-			ORDER BY "nickname" ASC, "name" ASC
 		`;
+		const closedByStoreId = new Map(closedRows.map(row => [row.id, row.isClosed]));
+
+		return stores.map(store => ({
+			...store,
+			address: {
+				...store.address,
+				cityCode: getFiscalCityCode(store.address),
+			},
+			isClosed: closedByStoreId.get(store.id) ?? true,
+		})) satisfies StoreOptionRecord[];
 	}
 
 	findActiveById(id: string) {
@@ -30,6 +76,20 @@ export class StoreRepository {
 				addressId: true,
 				id: true,
 				isActive: true,
+				name: true,
+				nickname: true,
+			},
+		});
+	}
+
+	updateLayout(id: string, layout: 'QUIET_OPS' | 'MOTION_CANVAS' | 'CRAVE_MARKET') {
+		return prisma.store.update({
+			where: { id },
+			data: { layout },
+			select: {
+				id: true,
+				isActive: true,
+				layout: true,
 				name: true,
 				nickname: true,
 			},

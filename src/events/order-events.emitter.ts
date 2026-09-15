@@ -9,6 +9,7 @@ export type AdminOrderChangedAction = 'create' | 'update';
 export interface AdminOrderChangedPayload {
 	action: AdminOrderChangedAction;
 	order: AdminOrder;
+	previousStatus?: OrderStatus;
 	status: OrderStatus;
 }
 

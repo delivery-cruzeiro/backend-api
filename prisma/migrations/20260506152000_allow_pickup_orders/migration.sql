@@ -1,0 +1,10 @@
+ALTER TABLE "Order"
+DROP CONSTRAINT IF EXISTS "Order_addressId_fkey";
+
+ALTER TABLE "Order"
+ALTER COLUMN "addressId" DROP NOT NULL;
+
+ALTER TABLE "Order"
+ADD CONSTRAINT "Order_addressId_fkey"
+FOREIGN KEY ("addressId") REFERENCES "Address"("id")
+ON DELETE SET NULL ON UPDATE CASCADE;
