@@ -10,6 +10,7 @@ import {
 	getCupPollGuess,
 	getCupPollResults,
 } from '../controllers/cup-poll.controller.js';
+import { requireAdmin } from '../middleware/auth.middleware.js';
 import { validateZod } from '../middleware/validate-zod.middleware.js';
 
 const cupPollGuessResponseSchema = {
@@ -100,6 +101,7 @@ export async function cupPollRoutes(fastify: FastifyInstance) {
 	fastify.post(
 		'/cup-poll/guesses',
 		{
+			config: {rateLimit:{max:6,timeWindow:'15 minutes'}},
 			preValidation: validateZod(createCupPollGuessSchema),
 			schema: {
 				description: 'Registrar palpite da promocao Palpite Certo',
@@ -140,6 +142,7 @@ export async function cupPollNewMatchRoutes(fastify: FastifyInstance) {
 	fastify.post(
 		'/newMatch',
 		{
+			preHandler: requireAdmin,
 			preValidation: validateZod(createCupPollMatchWinnerSchema),
 			schema: {
 				description: 'Registrar vencedores de um jogo da promocao Palpite Certo',

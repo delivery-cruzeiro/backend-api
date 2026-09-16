@@ -89,7 +89,8 @@ export class PromotionCouponService {
 
 	async deactivateExpiredPeriodPromotions() {
 		try {
-			await this.database.$executeRaw`SELECT deactivate_expired_period_promotions()`;
+			const today = new Date(); today.setUTCHours(0,0,0,0);
+			await this.database.promotion.updateMany({where:{usageMode:'AVAILABLE_PERIOD',isActive:true,endDate:{lt:today}},data:{isActive:false}});
 		} catch (error) {
 			console.warn('Nao foi possivel desativar promocoes vencidas via banco:', error);
 		}

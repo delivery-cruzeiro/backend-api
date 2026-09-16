@@ -1,11 +1,7 @@
-import { readdir, readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import forge from 'node-forge';
 
-export const DEFAULT_DIGITAL_CERTIFICATES_DIRECTORY = fileURLToPath(
-	new URL('../../Certificados digitais/', import.meta.url)
-);
+export const DEFAULT_DIGITAL_CERTIFICATES_DIRECTORY = '/run/secrets';
 
 export interface LoadDigitalCertificateInput {
 	certificateBuffer?: Buffer;
@@ -47,35 +43,7 @@ export class CertificateService {
 			return readFile(certificatePath);
 		}
 
-		const defaultCertificatePath = await this.findDefaultCertificatePath();
-
-		if (!defaultCertificatePath) {
-			throw new Error(
-				'Certificado digital nao encontrado. Informe CERTIFICATE_PATH ou adicione um arquivo .pfx/.p12 em services/fiscal/Certificados digitais.'
-			);
-		}
-
-		return readFile(defaultCertificatePath);
-	}
-
-	private async findDefaultCertificatePath() {
-		const entries = await readdir(DEFAULT_DIGITAL_CERTIFICATES_DIRECTORY, {
-			withFileTypes: true,
-		}).catch(() => []);
-
-		const certificateFile = entries.find(entry => {
-			if (!entry.isFile()) {
-				return false;
-			}
-
-			const extension = extname(entry.name).toLowerCase();
-
-			return extension === '.pfx' || extension === '.p12';
-		});
-
-		return certificateFile
-			? join(DEFAULT_DIGITAL_CERTIFICATES_DIRECTORY, certificateFile.name)
-			: null;
+		throw new Error('Configure CERTIFICATE_PATH with a mounted private certificate');
 	}
 
 	private findPrivateKey(p12: forge.pkcs12.Pkcs12Pfx) {

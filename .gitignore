@@ -61,3 +61,8 @@ coverage/
 *.log
 
 !prisma/migrations/**
+# Private certificates are mounted at runtime, never committed.
+*.pfx
+*.p12
+*.key
+*.pem

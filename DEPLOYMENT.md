@@ -1,4 +1,4 @@
-# Release 1.1.0
+# Release 1.2.0
 
 Este repositório é autossuficiente para build. Requer somente Docker; não use a instalação Node da máquina nem um workspace externo.
 

@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { auth } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
+import { databaseIdentity } from '../security/database-context.js';
 
 export interface AuthenticatedRequest extends FastifyRequest {
 	user?: {
@@ -52,6 +53,8 @@ export const authenticate = async (request: AuthenticatedRequest, reply: Fastify
 			name: user.name,
 			role: user.role,
 		};
+		const identity = databaseIdentity.getStore();
+		if (identity) Object.assign(identity, {kind:'user', userId:user.id, role:user.role});
 	} catch (error) {
 		console.error('Erro ao autenticar:', error);
 		return reply.status(401).send({

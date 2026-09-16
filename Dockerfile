@@ -22,6 +22,7 @@ COPY --from=build --chown=node:node /app/prisma.config.ts ./
 COPY --from=build --chown=node:node /app/package.json ./
 COPY --chown=node:node docker-entrypoint.sh ./
 COPY --chown=node:node scripts/migrate.mjs ./scripts/migrate.mjs
+COPY --chown=node:node scripts/encrypt-existing.mjs ./scripts/encrypt-existing.mjs
 RUN chmod +x docker-entrypoint.sh
 USER node
 EXPOSE 4000

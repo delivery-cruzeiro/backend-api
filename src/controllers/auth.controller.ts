@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { LoginUserDTO, RegisterUserDTO } from '@delivery-cruzeiro/types';
 import { auth } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
+import { sessionEvents } from '../security/session-events.js';
 
 type AuthEndpointOptions = {
 	method?: 'GET' | 'POST';
@@ -101,20 +102,11 @@ async function callAuthEndpoint(
 	);
 }
 
-function getAuthError(payload: Record<string, unknown> | null, fallback: string) {
-	if (!payload) {
-		return fallback;
-	}
+function getAuthError(_payload: unknown, fallback: string) { return fallback; }
 
-	if (typeof payload.message === 'string') {
-		return payload.message;
-	}
-
-	if (typeof payload.error === 'string') {
-		return payload.error;
-	}
-
-	return fallback;
+function publicSession(value: unknown) {
+ if (!value || typeof value !== 'object' || !('expiresAt' in value)) return null;
+ return {expiresAt:value.expiresAt};
 }
 
 async function findPublicUser(userId?: string, email?: string) {
@@ -158,7 +150,7 @@ export const register = async (
 
 		if (existingUser) {
 			return reply.status(400).send({
-				error: 'Email ja cadastrado',
+				error: 'Nao foi possivel criar a conta',
 			});
 		}
 
@@ -185,7 +177,7 @@ export const register = async (
 		return reply.status(201).send({
 			message: 'Usuario criado com sucesso',
 			user,
-			session: payload?.session ?? null,
+			session: publicSession(payload?.session),
 		});
 	} catch (error) {
 		request.log.error(error, 'Erro ao registrar usuario');
@@ -201,48 +193,23 @@ export const login = async (
 ) => {
 	try {
 		const { email, password } = request.body;
-		const userBeforeLogin = await prisma.user.findUnique({
-			where: { email },
-			select: {
-				id: true,
-				isActive: true,
-			},
-		});
 
-		if (!userBeforeLogin) {
-			return reply.status(401).send({
-				error: 'Credenciais invalidas',
-			});
-		}
-
-		if (!userBeforeLogin.isActive) {
-			return reply.status(403).send({
-				error: 'Usuario desativado',
-			});
-		}
-
-		const authResponse = await callAuthEndpoint(request, '/api/auth/sign-in/email', {
-			body: {
-				email,
-				password,
-			},
-		});
-		copyAuthHeaders(authResponse, reply);
-
-		const payload = await readAuthResponse(authResponse);
-
-		if (!authResponse.ok) {
-			return reply.status(401).send({
-				error: getAuthError(payload, 'Credenciais invalidas'),
-			});
-		}
-
-		const user = await findPublicUser(getSessionUserId(payload), email);
+  // Verify credentials through Better Auth even for absent accounts.
+  const authResponse = await callAuthEndpoint(request, '/api/auth/sign-in/email', {body:{email,password}});
+  const payload = await readAuthResponse(authResponse);
+  if (!authResponse.ok) return reply.status(401).send({error:'Credenciais invalidas'});
+  const user = await findPublicUser(getSessionUserId(payload));
+  if (!user?.isActive) {
+   const createdToken = typeof payload?.token === 'string' ? payload.token : undefined;
+   if (createdToken) await prisma.session.deleteMany({where:{token:createdToken}});
+   return reply.status(401).send({error:'Credenciais invalidas'});
+  }
+  copyAuthHeaders(authResponse, reply);
 
 		return reply.send({
 			message: 'Login realizado com sucesso',
 			user,
-			session: payload?.session ?? null,
+			session: publicSession(payload?.session),
 		});
 	} catch (error) {
 		request.log.error(error, 'Erro ao fazer login');
@@ -254,6 +221,7 @@ export const login = async (
 
 export const logout = async (request: FastifyRequest, reply: FastifyReply) => {
 	try {
+		const current = await auth.api.getSession({headers: toHeaders(request.headers)});
 		const authResponse = await callAuthEndpoint(request, '/api/auth/sign-out');
 		copyAuthHeaders(authResponse, reply);
 		const payload = await readAuthResponse(authResponse);
@@ -264,6 +232,7 @@ export const logout = async (request: FastifyRequest, reply: FastifyReply) => {
 			});
 		}
 
+		if (current?.user.id) sessionEvents.emit('revoked', current.user.id);
 		return reply.send({
 			message: 'Logout realizado com sucesso',
 		});
@@ -305,7 +274,7 @@ export const getMe = async (request: FastifyRequest, reply: FastifyReply) => {
 
 		return reply.send({
 			user,
-			session: payload.session ?? null,
+			session: publicSession(payload.session),
 		});
 	} catch (error) {
 		request.log.error(error, 'Erro ao obter usuario');
@@ -339,7 +308,7 @@ export const refreshToken = async (request: FastifyRequest, reply: FastifyReply)
 
 		return reply.send({
 			user,
-			session: payload.session ?? null,
+			session: publicSession(payload.session),
 		});
 	} catch (error) {
 		request.log.error(error, 'Erro ao renovar sessao');

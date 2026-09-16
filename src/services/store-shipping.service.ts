@@ -213,27 +213,16 @@ export class StoreShippingService {
 					storeId: query.storeId,
 				},
 			}),
-			prisma.$queryRaw<NeighborhoodMetricRow[]>`
-				SELECT
-					NULLIF(TRIM("neighborhood"), '') AS "neighborhood",
-					COUNT(DISTINCT "userId")::INT AS "total"
-				FROM "Address"
-				WHERE LOWER(TRIM("city")) = LOWER(TRIM(${city}))
-					AND UPPER(TRIM("state")) = UPPER(TRIM(${state}))
-				GROUP BY NULLIF(TRIM("neighborhood"), '')
-			`,
-			prisma.$queryRaw<NeighborhoodMetricRow[]>`
-				SELECT
-					NULLIF(TRIM(address."neighborhood"), '') AS "neighborhood",
-					COUNT(orders."id")::INT AS "total"
-				FROM "Order" orders
-				INNER JOIN "Address" address ON address."id" = orders."addressId"
-				WHERE orders."store_id" = ${query.storeId}::uuid
-					AND orders."status" <> 'CANCELLED'::"OrderStatus"
-					AND LOWER(TRIM(address."city")) = LOWER(TRIM(${city}))
-					AND UPPER(TRIM(address."state")) = UPPER(TRIM(${state}))
-				GROUP BY NULLIF(TRIM(address."neighborhood"), '')
-			`,
+			prisma.address.findMany({where:{city:{equals:city,mode:'insensitive'},state:{equals:state,mode:'insensitive'}},select:{neighborhood:true,userId:true}}).then(rows=>{
+    const groups=new Map<string,Set<string>>();
+    for(const row of rows){const key=row.neighborhood.trim();if(!groups.has(key))groups.set(key,new Set());groups.get(key)!.add(row.userId);}
+    return [...groups].map(([neighborhood,users])=>({neighborhood,total:users.size}));
+   }),
+   prisma.order.findMany({where:{storeId:query.storeId,status:{not:'CANCELLED'},address:{city:{equals:city,mode:'insensitive'},state:{equals:state,mode:'insensitive'}}},select:{address:{select:{neighborhood:true}}}}).then(rows=>{
+    const groups=new Map<string,number>();
+    for(const row of rows){const key=row.address?.neighborhood.trim()||'';groups.set(key,(groups.get(key)||0)+1);}
+    return [...groups].map(([neighborhood,total])=>({neighborhood,total}));
+   }),
 		]);
 		const rules = neighborhoodRules.map(rule => serializeNeighborhoodRule(rule));
 		const neighborhoods = this.mergeMetrics(customerRows, salesRows, rules);

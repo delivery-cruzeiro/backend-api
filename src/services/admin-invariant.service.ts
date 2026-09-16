@@ -11,7 +11,6 @@ const administratorRoles = [UserRole.ADMIN, UserRole.SUPER_ADMIN];
 const credentialProviderId = 'credential';
 
 async function ensureCredentialAccount(userId: string, password: string) {
-	const passwordHash = await hashPassword(password);
 	const credentialAccount = await prisma.account.findFirst({
 		where: {
 			userId,
@@ -19,8 +18,11 @@ async function ensureCredentialAccount(userId: string, password: string) {
 		},
 		select: {
 			id: true,
+			password: true,
 		},
 	});
+	if (credentialAccount?.password) return;
+	const passwordHash = await hashPassword(password);
 
 	if (credentialAccount) {
 		await prisma.account.updateMany({

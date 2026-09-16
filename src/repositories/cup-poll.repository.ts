@@ -45,88 +45,17 @@ export class CupPollRepository {
 		});
 	}
 
-	findPoolWinners() {
-		return prisma.$queryRaw<PoolWinnerRecord[]>`
-			SELECT
-				"match",
-				"result",
-				"first_winner" AS "firstWinner",
-				"second_winner" AS "secondWinner"
-			FROM "pool_winners"
-			ORDER BY "created_at" DESC
-		`;
-	}
 
-	findCorrectParticipants(match: string, result: string, firstWinner: string | null) {
-		return prisma.$queryRaw<CorrectParticipantRecord[]>`
-			SELECT "instagram_handle" AS "instagramHandle"
-			FROM "cup_poll_guesses"
-			WHERE "score_format" = ${match}
-				AND "score" = ${result}
-				AND (
-					${firstWinner}::TEXT IS NULL
-					OR "instagram_handle" <> ${firstWinner}
-				)
-			ORDER BY "created_at" ASC
-		`;
-	}
-
-	async findFirstCorrectParticipant(match: string, result: string) {
-		const participants = await prisma.$queryRaw<CorrectParticipantRecord[]>`
-			SELECT "instagram_handle" AS "instagramHandle"
-			FROM "cup_poll_guesses"
-			WHERE "score_format" = ${match}
-				AND "score" = ${result}
-			ORDER BY "created_at" ASC, "id" ASC
-			LIMIT 1
-		`;
-
-		return participants[0] ?? null;
-	}
-
-	async createPoolWinner(
-		match: string,
-		result: string,
-		firstWinner: string | null,
-		secondWinner: string | null
-	) {
-		await prisma.$executeRaw`
-			INSERT INTO "pool_winners" (
-				"match",
-				"result",
-				"first_winner",
-				"second_winner",
-				"created_at",
-				"updated_at"
-			)
-			VALUES (
-				${match},
-				${result},
-				${firstWinner},
-				${secondWinner},
-				CURRENT_TIMESTAMP,
-				CURRENT_TIMESTAMP
-			)
-			ON CONFLICT ("match")
-			DO UPDATE SET
-				"result" = EXCLUDED."result",
-				"first_winner" = EXCLUDED."first_winner",
-				"second_winner" = EXCLUDED."second_winner",
-				"updated_at" = CURRENT_TIMESTAMP
-		`;
-
-		return prisma.$queryRaw<PoolWinnerRecord[]>`
-			UPDATE "pool_winners"
-			SET
-				"first_winner" = ${firstWinner},
-				"second_winner" = ${secondWinner},
-				"updated_at" = CURRENT_TIMESTAMP
-			WHERE "match" = ${match}
-			RETURNING
-				"match",
-				"result",
-				"first_winner" AS "firstWinner",
-				"second_winner" AS "secondWinner"
-		`;
-	}
+ findPoolWinners() {
+  return prisma.poolWinner.findMany({orderBy:{createdAt:'desc'},select:{match:true,result:true,firstWinner:true,secondWinner:true}});
+ }
+ findCorrectParticipants(match: string,result: string,firstWinner: string|null) {
+  return prisma.cupPollGuess.findMany({where:{scoreFormat:match,score:result,...(firstWinner?{instagramHandle:{not:firstWinner}}:{})},orderBy:{createdAt:'asc'},select:{instagramHandle:true}});
+ }
+ findFirstCorrectParticipant(match:string,result:string) {
+  return prisma.cupPollGuess.findFirst({where:{scoreFormat:match,score:result},orderBy:[{createdAt:'asc'},{id:'asc'}],select:{instagramHandle:true}});
+ }
+ async createPoolWinner(match:string,result:string,firstWinner:string|null,secondWinner:string|null) {
+  return [await prisma.poolWinner.upsert({where:{match},create:{match,result,firstWinner,secondWinner},update:{result,firstWinner,secondWinner},select:{match:true,result:true,firstWinner:true,secondWinner:true}})];
+ }
 }

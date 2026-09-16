@@ -8,3 +8,7 @@
 **/.env.*
 **/*.log
 **/*.pem
+**/*.pfx
+**/*.p12
+**/*.key
+**/Certificados digitais

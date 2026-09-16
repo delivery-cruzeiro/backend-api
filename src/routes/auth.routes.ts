@@ -1,6 +1,7 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, RouteHandlerMethod } from 'fastify';
 import { loginUserSchema, registerUserSchema } from '@delivery-cruzeiro/types';
 import { register, login, logout, getMe, refreshToken } from '../controllers/auth.controller.js';
+import { limitLogin } from '../security/login-limit.js';
 import { validateZod } from '../middleware/validate-zod.middleware.js';
 
 export async function authRoutes(fastify: FastifyInstance) {
@@ -8,6 +9,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 	fastify.post(
 		'/auth/register',
 		{
+			config: {rateLimit:{max:6, timeWindow:'15 minutes'}},
 			preValidation: validateZod(registerUserSchema),
 			schema: {
 				description: 'Registrar um novo usuário',
@@ -17,7 +19,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 					required: ['email', 'password', 'name'],
 					properties: {
 						email: { type: 'string', format: 'email' },
-						password: { type: 'string', minLength: 8 },
+						password: { type: 'string', minLength: 8, maxLength: 128 },
 						name: { type: 'string' },
 						phone: { type: 'string', nullable: true },
 					},
@@ -60,7 +62,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 	fastify.post(
 		'/auth/login',
 		{
-			preValidation: validateZod(loginUserSchema),
+			preValidation: [limitLogin, validateZod(loginUserSchema)],
 			schema: {
 				description: 'Fazer login',
 				tags: ['Autenticação'],
@@ -110,7 +112,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 				},
 			},
 		},
-		login
+		login as RouteHandlerMethod
 	);
 
 	// Logout (rota customizada)

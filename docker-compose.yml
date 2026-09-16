@@ -11,24 +11,25 @@ services:
       interval: 5s
       retries: 20
   migrate:
-    image: ghcr.io/delivery-cruzeiro/backend-api:1.1.0
+    image: ghcr.io/delivery-cruzeiro/backend-api:1.2.0
     build: .
     environment:
       DATABASE_URL: postgresql://delivery:${POSTGRES_PASSWORD}@postgres:5432/delivery_cruzeiro
       DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:?Set DEFAULT_ADMIN_EMAIL}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD}
     command: ['node', 'scripts/migrate.mjs']
     depends_on:
       postgres: {condition: service_healthy}
   backend-api:
-    image: ghcr.io/delivery-cruzeiro/backend-api:1.1.0
+    image: ghcr.io/delivery-cruzeiro/backend-api:1.2.0
     build: .
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://delivery:${POSTGRES_PASSWORD}@postgres:5432/delivery_cruzeiro
+      DATABASE_URL: postgresql://delivery_app:${APP_DB_PASSWORD}@postgres:5432/delivery_cruzeiro
       HOST: 0.0.0.0
       PORT: 4000
       NODE_ENV: production
-    ports: ['${PORT:-4000}:4000']
+    ports: ['127.0.0.1:${PORT:-4000}:4000']
     depends_on:
       migrate: {condition: service_completed_successfully}
 volumes:

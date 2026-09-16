@@ -1,3 +1,4 @@
+import { isStoreClosed } from '../services/store-hours.js';
 import { prisma } from '../lib/prisma.js';
 import { getFiscalCityCode } from '../services/fiscal/shared/fiscal-location-codes.js';
 
@@ -28,6 +29,7 @@ export class StoreRepository {
 		const stores = await prisma.store.findMany({
 			orderBy: [{ nickname: 'asc' }, { name: 'asc' }],
 			select: {
+				openHour:true, closeHour:true, businessHours:true,
 				address: {
 					select: {
 						city: true,
@@ -50,22 +52,14 @@ export class StoreRepository {
 			},
 			where: { isActive: true },
 		});
-		const closedRows = await prisma.$queryRaw<Array<{ id: string; isClosed: boolean }>>`
-			SELECT
-				"id"::TEXT AS "id",
-				is_store_closed("id", NOW()) AS "isClosed"
-			FROM "stores"
-			WHERE "is_active" = TRUE
-		`;
-		const closedByStoreId = new Map(closedRows.map(row => [row.id, row.isClosed]));
 
-		return stores.map(store => ({
+		return stores.map(({openHour,closeHour,businessHours,...store}) => ({
 			...store,
 			address: {
 				...store.address,
 				cityCode: getFiscalCityCode(store.address),
 			},
-			isClosed: closedByStoreId.get(store.id) ?? true,
+			isClosed: isStoreClosed({openHour,closeHour,businessHours}),
 		})) satisfies StoreOptionRecord[];
 	}
 

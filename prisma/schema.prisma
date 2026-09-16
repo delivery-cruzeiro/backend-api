@@ -99,6 +99,14 @@ model Verification {
   updatedAt  DateTime? @updatedAt
 }
 
+model LoginAttempt {
+  key       String   @id
+  attempts  Int      @default(1)
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
 enum UserRole {
   CLIENT
   ADMIN

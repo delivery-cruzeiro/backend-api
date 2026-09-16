@@ -43,6 +43,11 @@ try {
     child.on('exit', code => resolve(code ?? 1));
   });
   if (code !== 0) throw new Error('Migration deployment failed; existing data was not reset.');
+  const runtimePassword = process.env.APP_DB_PASSWORD;
+  if (!runtimePassword || !/^[a-f0-9]{64}$/i.test(runtimePassword)) throw new Error('APP_DB_PASSWORD must contain 32 random bytes in hex');
+  await client.query("SELECT set_config('app.runtime_password', $1, false)", [runtimePassword]);
+  await client.query(`DO $$ BEGIN EXECUTE format('ALTER ROLE delivery_app LOGIN PASSWORD %L', current_setting('app.runtime_password')); END $$`);
+  await client.query("RESET app.runtime_password");
 } finally {
   await client.query('SELECT pg_advisory_unlock(728146301)').catch(() => {});
   await client.end();

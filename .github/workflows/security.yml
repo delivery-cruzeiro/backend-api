@@ -1,0 +1,25 @@
+name: Security checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan Git history without printing credentials
+        run: docker run --rm -v "$PWD:/repo:ro" ghcr.io/gitleaks/gitleaks:v8.24.3 git /repo --log-opts=--all --redact
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pinned dependencies inside Docker
+        run: docker build --target dependencies -t security-dependencies .
+      - name: Audit production and development dependencies
+        run: docker run --rm security-dependencies pnpm audit --audit-level moderate

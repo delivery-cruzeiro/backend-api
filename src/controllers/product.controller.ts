@@ -622,9 +622,9 @@ export const bulkUpdateProducts = async (
 			}
 		}
 
-		await prisma.$transaction(
+		await prisma.$transaction(async transaction => Promise.all(
 			products.map(product =>
-				prisma.product.update({
+				transaction.product.update({
 					where: { id: product.id },
 					data: {
 						...(appendDescription?.trim() && {
@@ -638,7 +638,7 @@ export const bulkUpdateProducts = async (
 					},
 				})
 			)
-		);
+		));
 
 		return reply.send({
 			message: 'Produtos atualizados com sucesso',

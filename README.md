@@ -1,6 +1,6 @@
 # delivery-cruzeiro-api
 
-Release 1.1.0. Repositório independente: não exige pastas vizinhas nem Node/pnpm na máquina hospedeira.
+Release 1.2.0. Repositório independente: não exige pastas vizinhas nem Node/pnpm na máquina hospedeira.
 
 O build, os testes e a geração de artefatos rodam dentro de Docker. Consulte [DEPLOYMENT.md](DEPLOYMENT.md) para os comandos.
 
