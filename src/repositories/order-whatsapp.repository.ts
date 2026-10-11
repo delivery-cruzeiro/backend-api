@@ -4,6 +4,8 @@ import { prisma } from '../lib/prisma.js';
 const orderWhatsAppDataSelect = {
 	id: true,
 	paymentType: true,
+	storePaymentMethodId: true,
+	storePaymentMethod: { select: { name: true } },
 	orderNumber: true,
 	status: true,
 	total: true,

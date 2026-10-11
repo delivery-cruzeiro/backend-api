@@ -43,7 +43,7 @@ export const createUser = async (
 	reply: FastifyReply
 ) => {
 	try {
-		const { email, password, name, phone, role = 'CLIENT', storeIds } = request.body;
+		const { email, password, name, phone, cpf, role = 'CLIENT', storeIds } = request.body;
 
 		const existingUser = await prisma.user.findUnique({
 			where: { email },
@@ -71,6 +71,7 @@ export const createUser = async (
 				password: hashedPassword,
 				name,
 				phone,
+				cpf,
 				role,
 				isActive: true,
 				emailVerified: false,
@@ -101,18 +102,34 @@ export const createUser = async (
 	}
 };
 
-export const getUsers = async (_request: FastifyRequest, reply: FastifyReply) => {
+export const getUsers = async (request: FastifyRequest, reply: FastifyReply) => {
 	try {
+		const query = (request.query ?? {}) as { search?: string; staff?: boolean; page?: number };
+		const search = query.search?.trim();
+		if (query.search !== undefined && (!search || search.length < 3)) {
+			return reply.status(400).send({ error: 'Digite pelo menos 3 caracteres' });
+		}
+		const digits = search?.replace(/\D/g, '') ?? '';
+		if (search && /^[\d.\-\s]+$/.test(search) && digits.length < 3) {
+			return reply.status(400).send({ error: 'Digite pelo menos 3 dígitos do CPF' });
+		}
+		const where = {
+			...(search && { OR: [
+				{ name: { startsWith: search.replace(/[\\%_]/g, '\\$&'), mode: 'insensitive' as const } },
+				...(/^[\d.\-\s]+$/.test(search) && digits.length >= 3 ? [{ cpf: { startsWith: digits } }] : []),
+			] }),
+			...(query.staff && { role: { not: 'CLIENT' as const } }),
+		};
 		const users = await prisma.user.findMany({
+			...(search || query.staff ? { where } : {}),
+			...(search ? { take: 20 } : query.staff ? { take: 50, skip: ((query.page ?? 1) - 1) * 50 } : {}),
 			select: publicUserSelect,
-			orderBy: {
-				createdAt: 'desc',
-			},
+			orderBy: search || query.staff ? [{ name: 'asc' }, { id: 'asc' }] : { createdAt: 'desc' },
 		});
 
 		return reply.send({
 			users,
-			total: users.length,
+			total: query.staff ? await prisma.user.count({ where }) : users.length,
 		});
 	} catch (error) {
 		console.error('Erro ao buscar usuarios:', error);
@@ -176,7 +193,7 @@ export const updateUser = async (
 ) => {
 	try {
 		const { id } = request.params;
-		const { email, name, phone, role, isActive, storeIds } = request.body;
+		const { email, name, phone, cpf, role, isActive, storeIds } = request.body;
 
 		const existingUser = await prisma.user.findUnique({
 			where: { id },
@@ -234,6 +251,7 @@ export const updateUser = async (
 				...(email && { email }),
 				...(name && { name }),
 				...(phone !== undefined && { phone }),
+				...(cpf !== undefined && { cpf }),
 				...(role && { role }),
 				...(isActive !== undefined && { isActive }),
 				...(role && isClientRole(role) && { stores: buildStoreSet([]) }),

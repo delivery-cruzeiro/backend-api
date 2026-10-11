@@ -11,6 +11,8 @@ export const whatsappMessageConfigurationSelect = {
 	id: true,
 	location: true,
 	operation: true,
+	paymentMethodId: true,
+	paymentMethod: { select: { id: true, storeId: true, name: true, type: true, isActive: true, createdAt: true, updatedAt: true } },
 	template: true,
 	isActive: true,
 	createdAt: true,
@@ -27,7 +29,8 @@ export interface WhatsAppMessageConfigurationRepository {
 	): Promise<WhatsAppMessageConfigurationRecord>;
 	findActiveByEvent(
 		location: WhatsAppMessageLocation,
-		operation: WhatsAppMessageOperation
+		operation: WhatsAppMessageOperation,
+		paymentMethodId?: string | null
 	): Promise<WhatsAppMessageConfigurationRecord[]>;
 	findById(id: string): Promise<WhatsAppMessageConfigurationRecord | null>;
 	list(): Promise<WhatsAppMessageConfigurationRecord[]>;
@@ -46,15 +49,23 @@ export class PrismaWhatsAppMessageConfigurationRepository implements WhatsAppMes
 				isActive: data.isActive,
 				location: data.location,
 				operation: data.operation,
+				paymentMethodId: data.paymentMethodId ?? null,
 				template: data.template as unknown as Prisma.InputJsonValue,
 			},
 			select: whatsappMessageConfigurationSelect,
 		});
 	}
 
-	findActiveByEvent(location: WhatsAppMessageLocation, operation: WhatsAppMessageOperation) {
+	findActiveByEvent(location: WhatsAppMessageLocation, operation: WhatsAppMessageOperation, paymentMethodId?: string | null) {
 		return this.database.whatsAppMessageConfiguration.findMany({
-			where: { isActive: true, location, operation },
+			where: {
+				isActive: true,
+				location,
+				operation,
+				OR: paymentMethodId
+					? [{ paymentMethodId }, { paymentMethodId: null }]
+					: [{ paymentMethodId: null }],
+			},
 			orderBy: { createdAt: 'asc' },
 			select: whatsappMessageConfigurationSelect,
 		});
@@ -81,6 +92,7 @@ export class PrismaWhatsAppMessageConfigurationRepository implements WhatsAppMes
 				...(data.isActive !== undefined && { isActive: data.isActive }),
 				...(data.location !== undefined && { location: data.location }),
 				...(data.operation !== undefined && { operation: data.operation }),
+				...(data.paymentMethodId !== undefined && { paymentMethodId: data.paymentMethodId }),
 				...(data.template !== undefined && {
 					template: data.template as unknown as Prisma.InputJsonValue,
 				}),

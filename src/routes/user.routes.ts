@@ -37,12 +37,13 @@ export async function userRoutes(fastify: FastifyInstance) {
 				tags: ['Usuários'],
 				body: {
 					type: 'object',
-					required: ['email', 'password', 'name'],
+					required: ['email', 'password', 'name', 'phone'],
 					properties: {
 						email: { type: 'string', format: 'email' },
 						password: { type: 'string', minLength: 8 },
 						name: { type: 'string' },
 						phone: { type: 'string', nullable: true },
+						cpf: { type: 'string', maxLength: 14, nullable: true },
 						role: {
 							type: 'string',
 							enum: ['CLIENT', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'],
@@ -105,6 +106,14 @@ export async function userRoutes(fastify: FastifyInstance) {
 			preHandler: requireAdmin,
 			schema: {
 				description: 'Listar todos os usuários',
+				querystring: {
+					type: 'object',
+					properties: {
+						search: { type: 'string', minLength: 3, maxLength: 100 },
+						staff: { type: 'boolean' },
+						page: { type: 'integer', minimum: 1, maximum: 100000 },
+					},
+				},
 				tags: ['Usuários'],
 				response: {
 					200: {
@@ -229,6 +238,7 @@ export async function userRoutes(fastify: FastifyInstance) {
 						email: { type: 'string', format: 'email' },
 						name: { type: 'string' },
 						phone: { type: 'string', nullable: true },
+						cpf: { type: 'string', maxLength: 14, nullable: true },
 						role: {
 							type: 'string',
 							enum: ['CLIENT', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'],

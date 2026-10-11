@@ -61,3 +61,4 @@ export async function clientRoutes(fastify: FastifyInstance) {
 	fastify.post('/client/orders', createClientOrderHandler);
 	fastify.get('/client/orders/:id', getClientOrderByIdHandler);
 }
+

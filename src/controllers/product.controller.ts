@@ -17,6 +17,7 @@ import {
 	storeSummaryListArgs,
 } from '../services/catalog-store.utils.js';
 import { uploadImage } from '../services/image-upload.service.js';
+import { composeProductAdditionalFields } from '../services/product-additional-fields.service.js';
 import { appendMultipartField, parseStringArrayField } from './catalog-request.utils.js';
 
 const productSelect = {
@@ -24,6 +25,7 @@ const productSelect = {
 	categoryId: true,
 	category: {
 		select: {
+			additionalFields: true,
 			id: true,
 			name: true,
 		},
@@ -31,6 +33,7 @@ const productSelect = {
 	subcategoryId: true,
 	subcategory: {
 		select: {
+			additionalFields: true,
 			id: true,
 			name: true,
 		},
@@ -202,6 +205,7 @@ async function readProductRequest(request: FastifyRequest<{ Body: ProductDTO }>)
 }
 
 type ProductWithBadges = {
+	additionalFields: unknown;
 	badges: Array<{
 		badge: {
 			color: string;
@@ -212,7 +216,10 @@ type ProductWithBadges = {
 			storeId: string;
 		};
 	}>;
+	category: { additionalFields: unknown; id: string; name: string };
+	id: string;
 	price: unknown;
+	subcategory: { additionalFields: unknown; id: string; name: string } | null;
 	[key: string]: unknown;
 };
 
@@ -220,6 +227,11 @@ function serializeProduct(product: ProductWithBadges, storeId?: string) {
 	const { badges, ...data } = product;
 	return {
 		...data,
+		additionalFields: composeProductAdditionalFields({
+			category: product.category,
+			product,
+			subcategory: product.subcategory,
+		}),
 		badges: badges
 			.map(item => item.badge)
 			.filter(badge => !storeId || badge.storeId === storeId),

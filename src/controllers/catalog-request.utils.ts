@@ -81,6 +81,18 @@ export function parseStringArrayField(value: unknown): string[] | undefined {
 		.filter(Boolean);
 }
 
+export function parseJsonArrayField(value: unknown) {
+	if (Array.isArray(value)) return value;
+	if (typeof value !== 'string' || value.trim() === '') return undefined;
+
+	try {
+		const parsed = JSON.parse(value) as unknown;
+		return Array.isArray(parsed) ? parsed : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 export function appendMultipartField(fields: Record<string, unknown>, key: string, value: unknown) {
 	const currentValue = fields[key];
 
@@ -94,6 +106,9 @@ export function appendMultipartField(fields: Record<string, unknown>, key: strin
 
 export function normalizeBaseCatalogInput(fields: Record<string, unknown>) {
 	return {
+		...(fields.additionalFields !== undefined && {
+			additionalFields: parseJsonArrayField(fields.additionalFields),
+		}),
 		...(typeof fields.description === 'string' &&
 			fields.description.trim() && { description: fields.description }),
 		...(typeof fields.imageUrl === 'string' &&

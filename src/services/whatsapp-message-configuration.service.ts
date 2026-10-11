@@ -5,6 +5,7 @@ import {
 	type WhatsAppMessageConfiguration,
 	WhatsAppMessageLocation,
 	WhatsAppMessageOperation,
+	PaymentType,
 } from '@delivery-cruzeiro/types';
 import {
 	PrismaWhatsAppMessageConfigurationRepository,
@@ -33,6 +34,9 @@ function serializeConfiguration(
 
 	return {
 		...record,
+		paymentMethod: record.paymentMethod
+			? { ...record.paymentMethod, type: record.paymentMethod.type as PaymentType }
+			: null,
 		location: record.location as WhatsAppMessageLocation,
 		operation: record.operation as WhatsAppMessageOperation,
 		template: template.data,
@@ -82,6 +86,7 @@ export class WhatsAppMessageConfigurationService {
 					isActive: data.isActive ?? existing.isActive,
 					location: (data.location ?? existing.location) as WhatsAppMessageLocation,
 					operation: (data.operation ?? existing.operation) as WhatsAppMessageOperation,
+					paymentMethodId: data.paymentMethodId === undefined ? existing.paymentMethodId : data.paymentMethodId,
 					template: data.template,
 				})
 			: data;

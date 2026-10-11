@@ -17,10 +17,15 @@ import {
 	storeSummaryListArgs,
 } from '../services/catalog-store.utils.js';
 import { uploadImage } from '../services/image-upload.service.js';
-import { appendMultipartField, parseStringArrayField } from './catalog-request.utils.js';
+import {
+	appendMultipartField,
+	parseJsonArrayField,
+	parseStringArrayField,
+} from './catalog-request.utils.js';
 
 const categorySelect = {
 	id: true,
+	additionalFields: true,
 	name: true,
 	description: true,
 	imageUrl: true,
@@ -81,6 +86,9 @@ function parseNumberField(value: unknown) {
 
 function normalizeCategoryInput(fields: Record<string, unknown>) {
 	return {
+		...(fields.additionalFields !== undefined && {
+			additionalFields: parseJsonArrayField(fields.additionalFields),
+		}),
 		...(typeof fields.description === 'string' &&
 			fields.description.trim() && { description: fields.description }),
 		...(typeof fields.imageUrl === 'string' &&
@@ -180,7 +188,14 @@ export const createCategory = async (
 			});
 		}
 
-		const { description, isActive = true, name, order = 0, storeIds } = validation.data;
+		const {
+			additionalFields = [],
+			description,
+			isActive = true,
+			name,
+			order = 0,
+			storeIds,
+		} = validation.data;
 
 		try {
 			await ensureActiveStoresExist(storeIds);
@@ -212,6 +227,7 @@ export const createCategory = async (
 
 		const category = await prisma.category.create({
 			data: {
+				additionalFields,
 				name,
 				description,
 				imageUrl,

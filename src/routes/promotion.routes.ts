@@ -12,6 +12,43 @@ const deletePromotionHandler = deletePromotion as unknown as RouteHandlerMethod;
 const getPromotionsHandler = getPromotions as unknown as RouteHandlerMethod;
 const updatePromotionHandler = updatePromotion as unknown as RouteHandlerMethod;
 
+export const promotionBodySchema = {
+	type: 'object',
+	additionalProperties: false,
+	required: ['name', 'type', 'value', 'startDate', 'endDate', 'storeIds'],
+	properties: {
+		name: { type: 'string' },
+		description: { type: 'string', nullable: true },
+		type: { type: 'string' },
+		value: { type: 'number', minimum: 0 },
+		minPurchase: { type: 'number', minimum: 0, nullable: true },
+		maxDiscount: { type: 'number', minimum: 0, nullable: true },
+		startDate: { type: 'string' },
+		endDate: { type: 'string' },
+		eligibilityType: { type: 'string' },
+		eligibilityTarget: {
+			anyOf: [
+				{ type: 'null' },
+				{ type: 'string' },
+				{ type: 'array', items: { type: 'string' } },
+			],
+		},
+		usageMode: { type: 'string' },
+		usageLimit: { type: 'number', minimum: 0, nullable: true },
+		isActive: { type: 'boolean' },
+		buyProductId: { type: 'string' },
+		rewardProductId: { type: 'string' },
+		productIds: {
+			type: 'array',
+			items: { type: 'string' },
+		},
+		storeIds: {
+			type: 'array',
+			items: { type: 'string' },
+		},
+	},
+} as const;
+
 export async function promotionRoutes(fastify: FastifyInstance) {
 	fastify.get(
 		'/promotions',
@@ -28,35 +65,7 @@ export async function promotionRoutes(fastify: FastifyInstance) {
 			schema: {
 				description: 'Criar promocao',
 				tags: ['Promocoes'],
-				body: {
-					type: 'object',
-					required: ['name', 'type', 'value', 'startDate', 'endDate', 'storeIds'],
-					properties: {
-						name: { type: 'string' },
-						description: { type: 'string', nullable: true },
-						type: { type: 'string' },
-						value: { type: 'number', minimum: 0 },
-						minPurchase: { type: 'number', minimum: 0, nullable: true },
-						maxDiscount: { type: 'number', minimum: 0, nullable: true },
-						startDate: { type: 'string' },
-						endDate: { type: 'string' },
-						isActive: { type: 'boolean' },
-						buyProductId: { type: 'string' },
-						rewardProductId: { type: 'string' },
-						productIds: {
-							type: 'array',
-							items: {
-								type: 'string',
-							},
-						},
-						storeIds: {
-							type: 'array',
-							items: {
-								type: 'string',
-							},
-						},
-					},
-				},
+				body: promotionBodySchema,
 				response: {
 					201: {
 						type: 'object',

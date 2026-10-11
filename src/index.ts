@@ -4,7 +4,7 @@ import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import dotenv from 'dotenv';
-import { securityConfig } from './security/config.js';
+import { isAllowedOrigin } from './security/config.js';
 import { registerSecurityHooks } from './security/http.js';
 import { assertDatabaseSecurity } from './lib/prisma.js';
 import { orderEventsEmitter } from './events/order-events.emitter.js';
@@ -24,6 +24,7 @@ import { printerConfigurationRoutes } from './routes/printer-configuration.route
 import { promotionRoutes } from './routes/promotion.routes.js';
 import { storeShippingRoutes } from './routes/store-shipping.routes.js';
 import { storeRoutes } from './routes/store.routes.js';
+import { storePaymentMethodRoutes } from './routes/store-payment-method.routes.js';
 import { subcategoryRoutes } from './routes/subcategory.routes.js';
 import { userGroupRoutes } from './routes/user-group.routes.js';
 import { userRoutes } from './routes/user.routes.js';
@@ -51,10 +52,6 @@ const orderWhatsAppAutomationService = new OrderWhatsAppAutomationService(
 	undefined,
 	fastify.log
 );
-
-function isAllowedOrigin(origin?: string) {
-	return !origin || securityConfig().origins.includes(origin);
-}
 
 const startServer = async () => {
 	try {
@@ -155,6 +152,7 @@ const startServer = async () => {
 		await fastify.register(promotionRoutes, { prefix: '/api' });
 		await fastify.register(storeShippingRoutes, { prefix: '/api' });
 		await fastify.register(storeRoutes, { prefix: '/api' });
+		await fastify.register(storePaymentMethodRoutes, { prefix: '/api' });
 		await fastify.register(subcategoryRoutes, { prefix: '/api' });
 		await fastify.register(userGroupRoutes, { prefix: '/api' });
 		await fastify.register(userRoutes, { prefix: '/api' });

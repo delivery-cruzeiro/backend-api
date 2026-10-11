@@ -1,5 +1,7 @@
 import 'dotenv/config';
 
+const TRYCLOUDFLARE_ORIGIN_PATTERN = 'https://*.trycloudflare.com';
+
 export function securityConfig(env = process.env) {
  const base = new URL(env.PUBLIC_URL || env.BETTER_AUTH_URL || 'http://localhost:8080');
  const local = ['localhost', '127.0.0.1', '[::1]'].includes(base.hostname);
@@ -12,12 +14,32 @@ export function securityConfig(env = process.env) {
   if (!/^[a-f0-9]{64}$/i.test(env.DATA_ENCRYPTION_KEY || '')) throw new Error('DATA_ENCRYPTION_KEY must contain 32 random bytes in hex');
  }
  for (const value of (env.CORS_ORIGIN || '').split(',').map(x => x.trim()).filter(Boolean)) {
+  if (value === TRYCLOUDFLARE_ORIGIN_PATTERN) {
+   origins.add(value);
+   continue;
+  }
   const url = new URL(value);
   if (url.origin !== value || url.username || url.password || value.includes('*')) throw new Error('CORS requires exact origins');
   if (env.NODE_ENV === 'production' && url.protocol !== 'https:' && !(local && env.ALLOW_INSECURE_LOCALHOST === 'true' && ['localhost','127.0.0.1','[::1]'].includes(url.hostname))) throw new Error('CORS origin must use HTTPS');
   origins.add(url.origin);
  }
  return { baseURL: base.origin, origins: [...origins], secureCookies: base.protocol === 'https:' };
+}
+
+export function isAllowedOrigin(origin: string | undefined, origins = securityConfig().origins) {
+ if (!origin) return true;
+ if (origins.includes(origin)) return true;
+ if (!origins.includes(TRYCLOUDFLARE_ORIGIN_PATTERN)) return false;
+ try {
+  const url = new URL(origin);
+  return url.origin === origin
+   && url.protocol === 'https:'
+   && url.port === ''
+   && url.hostname.endsWith('.trycloudflare.com')
+   && url.hostname !== 'trycloudflare.com';
+ } catch {
+  return false;
+ }
 }
 
 export function hasUrlCredential(url: string) {

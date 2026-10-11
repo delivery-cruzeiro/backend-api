@@ -28,6 +28,7 @@ vi.mock('../../src/lib/prisma', () => ({
 			findUnique: vi.fn(),
 			create: vi.fn(),
 			findMany: vi.fn(),
+			count: vi.fn(),
 			update: vi.fn(),
 			delete: vi.fn(),
 		},
@@ -139,6 +140,33 @@ describe('User Controller', () => {
 	});
 
 	describe('getUsers', () => {
+		it('rejects short searches without reading the database', async () => {
+			mockRequest.query = { search: 'ab' };
+			await getUsers(mockRequest, mockReply);
+			expect(mockReply.status).toHaveBeenCalledWith(400);
+			expect(prisma.user.findMany).not.toHaveBeenCalled();
+		});
+
+		it('limits prefix searches and normalizes formatted CPF', async () => {
+			mockRequest.query = { search: '123.4' };
+			vi.mocked(prisma.user.findMany).mockResolvedValue([]);
+			await getUsers(mockRequest, mockReply);
+			expect(prisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
+				take: 20,
+				where: { OR: [{ name: { startsWith: '123.4', mode: 'insensitive' } }, { cpf: { startsWith: '1234' } }] },
+			}));
+		});
+
+		it('paginates non-client users in the database', async () => {
+			mockRequest.query = { staff: true, page: 2 };
+			vi.mocked(prisma.user.findMany).mockResolvedValue([]);
+			vi.mocked(prisma.user.count).mockResolvedValue(75);
+			await getUsers(mockRequest, mockReply);
+			expect(prisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
+				where: { role: { not: 'CLIENT' } }, take: 50, skip: 50,
+			}));
+			expect(mockReply.send).toHaveBeenCalledWith({ users: [], total: 75 });
+		});
 		it('deve listar todos os usuarios', async () => {
 			const mockUsers = [
 				{

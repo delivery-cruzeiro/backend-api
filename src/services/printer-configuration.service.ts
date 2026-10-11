@@ -1,5 +1,6 @@
 import {
 	PrinterConnectionStatus,
+	createPrinterConfigurationSchema,
 	type CreatePrinterConfigurationDTO,
 	type PrinterConfiguration,
 	type SetPrinterAssignmentsDTO,
@@ -14,7 +15,10 @@ import {
 export type PrinterConfigurationActor = { id: string; role: string };
 
 export class PrinterConfigurationError extends Error {
-	constructor(message: string, readonly statusCode: number) {
+	constructor(
+		message: string,
+		readonly statusCode: number
+	) {
 		super(message);
 		this.name = 'PrinterConfigurationError';
 	}
@@ -24,6 +28,14 @@ function serialize(record: PrinterConfigurationRecord): PrinterConfiguration {
 	const { categories, subcategories, ...printer } = record;
 	return {
 		...printer,
+		receiptSections: printer.receiptSections as PrinterConfiguration['receiptSections'],
+		lastKnownStatus: printer.lastKnownStatus as PrinterConfiguration['lastKnownStatus'],
+		transport: printer.transport as PrinterConfiguration['transport'],
+		adapterId: printer.adapterId as PrinterConfiguration['adapterId'],
+		encoding: printer.encoding as PrinterConfiguration['encoding'],
+		windowsCapabilities:
+			printer.windowsCapabilities as unknown as PrinterConfiguration['windowsCapabilities'],
+		lastSeenAt: printer.lastSeenAt?.toISOString() ?? null,
 		connectionStatus: printer.connectionStatus as PrinterConnectionStatus,
 		categoryIds: categories.map(item => item.categoryId),
 		subcategoryIds: subcategories.map(item => item.subcategoryId),
@@ -50,18 +62,35 @@ export class PrinterConfigurationService {
 		}
 	}
 
-	async update(id: string, data: UpdatePrinterConfigurationDTO, actor: PrinterConfigurationActor) {
+	async update(
+		id: string,
+		data: UpdatePrinterConfigurationDTO,
+		actor: PrinterConfigurationActor
+	) {
 		const current = await this.findAccessible(id, actor);
+		const validation = createPrinterConfigurationSchema.safeParse({
+			...current,
+			...data,
+			lastSeenAt: data.lastSeenAt ?? current.lastSeenAt?.toISOString() ?? null,
+		});
+		if (!validation.success)
+			throw new PrinterConfigurationError(
+				'Configuração incompatível com o transporte ou protocolo da impressora',
+				400
+			);
 		try {
 			if (data.isPrimary) {
 				const primary = await this.repository.setPrimary(id, current.storeId);
-				if (data.name !== undefined || data.connectionStatus !== undefined) {
+				if (Object.keys(data).some(key => key !== 'isPrimary')) {
 					return serialize(await this.repository.update(id, data));
 				}
 				return serialize(primary);
 			}
 			if (data.isPrimary === false && current.isPrimary) {
-				throw new PrinterConfigurationError('Defina outra impressora como principal antes desta alteracao', 400);
+				throw new PrinterConfigurationError(
+					'Defina outra impressora como principal antes desta alteracao',
+					400
+				);
 			}
 			return serialize(await this.repository.update(id, data));
 		} catch (error) {
@@ -69,9 +98,19 @@ export class PrinterConfigurationService {
 		}
 	}
 
-	async setAssignments(id: string, data: SetPrinterAssignmentsDTO, actor: PrinterConfigurationActor) {
+	async setAssignments(
+		id: string,
+		data: SetPrinterAssignmentsDTO,
+		actor: PrinterConfigurationActor
+	) {
 		const current = await this.findAccessible(id, actor);
-		if (!(await this.repository.validateAssignments(current.storeId, data.categoryIds, data.subcategoryIds))) {
+		if (
+			!(await this.repository.validateAssignments(
+				current.storeId,
+				data.categoryIds,
+				data.subcategoryIds
+			))
+		) {
 			throw new PrinterConfigurationError('Uma ou mais categorias nao pertencem a loja', 400);
 		}
 		return serialize(await this.repository.setAssignments(id, data));
@@ -98,7 +137,10 @@ export class PrinterConfigurationService {
 	private throwKnownError(error: unknown): never {
 		if (error instanceof PrinterConfigurationError) throw error;
 		if (typeof error === 'object' && error && 'code' in error && error.code === 'P2002') {
-			throw new PrinterConfigurationError('Ja existe uma impressora com este nome ou conexao', 409);
+			throw new PrinterConfigurationError(
+				'Ja existe uma impressora com este nome ou conexao',
+				409
+			);
 		}
 		throw error;
 	}

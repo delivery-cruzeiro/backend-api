@@ -53,7 +53,7 @@ describe('Order WhatsApp automation', () => {
 		);
 	});
 
-	it('does not load the order or WhatsApp when no active configuration exists', async () => {
+	it('does not load WhatsApp when no active configuration exists', async () => {
 		vi.mocked(configurationRepository.findActiveByEvent).mockResolvedValue([]);
 		const service = new OrderWhatsAppAutomationService(
 			configurationRepository,
@@ -66,7 +66,7 @@ describe('Order WhatsApp automation', () => {
 			orderId: 'order-1',
 		});
 
-		expect(orderRepository.findMessageData).not.toHaveBeenCalled();
+		expect(orderRepository.findMessageData).toHaveBeenCalledWith('order-1');
 		expect(serviceFactory).not.toHaveBeenCalled();
 	});
 

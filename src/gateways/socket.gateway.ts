@@ -2,7 +2,7 @@ import type { Server as HttpServer } from 'node:http';
 import { Server, type Socket } from 'socket.io';
 import { auth } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
-import { hasUrlCredential, securityConfig } from '../security/config.js';
+import { hasUrlCredential, isAllowedOrigin } from '../security/config.js';
 import { sessionEvents } from '../security/session-events.js';
 import {
 	ADMIN_ORDERS_CHANGED_EVENT,
@@ -33,7 +33,7 @@ export class SocketGateway {
 	constructor({ corsOrigin, eventEmitter, httpServer }: SocketGatewayOptions) {
 		this.io = new Server(httpServer, {
 			maxHttpBufferSize: 16384,
-			allowRequest: (req, callback) => callback(null, !hasUrlCredential(req.url || '/') && (!req.headers.origin || securityConfig().origins.includes(req.headers.origin))),
+			allowRequest: (req, callback) => callback(null, !hasUrlCredential(req.url || '/') && isAllowedOrigin(req.headers.origin)),
 			cors: {
 				credentials: true,
 				origin: corsOrigin,

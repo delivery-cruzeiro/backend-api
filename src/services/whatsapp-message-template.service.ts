@@ -17,6 +17,7 @@ export type WhatsAppTemplateOrderData = {
 	} | null;
 	items: Array<{ name: string; quantity: number }>;
 	paymentType?: string | null;
+	paymentMethodName?: string | null;
 	orderNumber: number | null;
 	phone: string;
 	status: OrderStatus;
@@ -127,7 +128,7 @@ function buildPlaceholderValues(data: WhatsAppTemplateOrderData) {
 		nome: data.userName,
 		numeroPedido:
 			data.orderNumber == null ? 'Aguardando confirmação' : String(data.orderNumber),
-		formaPagamento:
+		formaPagamento: data.paymentMethodName ??
 			(
 				{
 					PIX: 'PIX',

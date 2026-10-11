@@ -84,6 +84,7 @@ const addressSelect = {
 	zipCodeValidated: true,
 	latitude: true,
 	longitude: true,
+ locationConfirmed: true,
 	isDefault: true,
 	createdAt: true,
 	updatedAt: true,
@@ -154,6 +155,8 @@ const orderSelect = {
 	},
 	paymentType: true,
 	paymentMethodId: true,
+	storePaymentMethodId: true,
+	storePaymentMethod: { select: { id: true, storeId: true, name: true, type: true, isActive: true, createdAt: true, updatedAt: true } },
 	promotionId: true,
 	paymentMethod: {
 		select: paymentMethodSelect,
@@ -432,7 +435,7 @@ export const updateClientAddress = async (
 
 	const address = await prisma.address.update({
 		where: { id: request.params.id },
-		data: { ...validation.data, zipCodeValidated: true },
+		data: { ...validation.data, zipCodeValidated: true, locationConfirmed: false, latitude: null, longitude: null, geocodingKey: null, geocodingAttemptedAt: null },
 		select: addressSelect,
 	});
 
@@ -571,6 +574,7 @@ export const getClientShippingQuote = async (
 		select: {
 			neighborhood: true,
 			zipCodeValidated: true,
+      city: true, state: true, latitude: true, longitude: true, locationConfirmed: true,
 		},
 	});
 
@@ -583,7 +587,9 @@ export const getClientShippingQuote = async (
 	}
 
 	const quote = await storeShippingService.resolveShippingQuote({
+    addressId: request.query.addressId,
 		neighborhood: address.neighborhood,
+ city: address.city, state: address.state, latitude: address.latitude, longitude: address.longitude, locationConfirmed: address.locationConfirmed,
 		storeId,
 	});
 
@@ -673,3 +679,5 @@ export const getClientOrderById = async (
 		order: serializeOrder(order),
 	});
 };
+
+

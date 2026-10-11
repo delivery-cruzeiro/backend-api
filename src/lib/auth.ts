@@ -20,9 +20,10 @@ export const auth = betterAuth({
 			image: 'avatar',
 		},
 		additionalFields: {
+			cpf: { type: 'string', required: false, input: true, returned: false },
 			phone: {
 				type: 'string',
-				required: false,
+				required: true,
 				input: true,
 			},
 			role: {

@@ -19,6 +19,7 @@ model User {
   emailVerified Boolean     @default(false)
   password      String?
   name          String
+  cpf           String?
   gender        UserGender?
   phone         String?
   avatar        String?
@@ -46,6 +47,8 @@ model User {
 
   @@index([email])
   @@index([role])
+  @@index([cpf(ops: raw("text_pattern_ops"))], map: "User_cpf_prefix_idx")
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "User_name_prefix_idx")
 }
 
 // ============================================
@@ -146,6 +149,9 @@ model Address {
   zipCodeValidated Boolean  @default(false) @map("zip_code_validated")
   latitude         Float?
   longitude        Float?
+  locationConfirmed Boolean @default(false) @map("location_confirmed")
+  geocodingKey String? @map("geocoding_key")
+  geocodingAttemptedAt DateTime? @map("geocoding_attempted_at")
   isDefault        Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -189,8 +195,10 @@ model Store {
   promotions                Promotion[]                 @relation("StorePromotions")
   shippingRules             StoreShipping[]
   neighborhoodShippingRules StoreNeighborhoodShipping[]
+  deliveryPartitions DeliveryPartition[]
   subcategories             Subcategory[]               @relation("StoreSubcategories")
   users                     User[]                      @relation("UserStores")
+  paymentMethods            StorePaymentMethod[]
 
   @@index([addressId])
   @@index([isActive])
@@ -258,6 +266,8 @@ model StoreNeighborhoodShipping {
   id           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   storeId      String             @map("store_id") @db.Uuid
   store        Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  areaId       String? @unique @map("area_id") @db.Uuid
+  area         DeliveryArea? @relation(fields: [areaId, storeId], references: [id, storeId], onDelete: Restrict)
   neighborhood String
   isBlocked    Boolean            @default(false) @map("is_blocked")
   mode         ShippingChargeMode
@@ -268,7 +278,8 @@ model StoreNeighborhoodShipping {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  @@unique([storeId, neighborhood])
+  @@unique([areaId, storeId])
+  // Legacy uniqueness is a partial SQL index (area_id IS NULL).
   @@index([shippingId])
   @@index([storeId])
   @@map("store_neighborhood_shipping")
@@ -330,6 +341,24 @@ model PaymentMethod {
   @@index([userId])
 }
 
+model StorePaymentMethod {
+  id        String      @id @default(cuid())
+  storeId   String      @map("store_id") @db.Uuid
+  store     Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name      String
+  type      PaymentType
+  isActive  Boolean     @default(true) @map("is_active")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  orders                         Order[]
+  whatsappMessageConfigurations WhatsAppMessageConfiguration[]
+
+  @@unique([storeId, name])
+  @@index([storeId, isActive])
+  @@map("store_payment_methods")
+}
+
 enum PaymentType {
   CREDIT_CARD
   DEBIT_CARD
@@ -351,6 +380,7 @@ model Category {
   name        String   @unique
   description String?
   imageUrl    String?
+  additionalFields Json       @default("[]") @map("additional_fields")
   order       Int      @default(0)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -397,6 +427,7 @@ model Subcategory {
   name        String
   description String?
   imageUrl    String?
+  additionalFields Json       @default("[]") @map("additional_fields")
   order       Int      @default(0)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -417,6 +448,23 @@ model Subcategory {
 // ============================================
 
 model PrinterConfiguration {
+  transport String @default("WEB_SERIAL")
+  windowsQueueId String? @map("windows_queue_id")
+  windowsQueueName String? @map("windows_queue_name")
+  windowsDriverName String? @map("windows_driver_name")
+  windowsPortName String? @map("windows_port_name")
+  windowsPrintProcessor String? @map("windows_print_processor")
+  windowsDataType String? @map("windows_data_type")
+  windowsCapabilities Json? @map("windows_capabilities")
+  adapterId String @default("esc-pos") @map("adapter_id")
+  columns Int @default(48)
+  encoding String @default("cp850")
+  autoCut Boolean @default(true) @map("auto_cut")
+  copies Int @default(1)
+  lastSeenAt DateTime? @map("last_seen_at")
+  lastKnownStatus String? @map("last_known_status")
+  bridgeInstallationId String? @map("bridge_installation_id")
+  @@unique([storeId, windowsQueueId])
   id               String                  @id @default(cuid())
   storeId          String                  @map("store_id") @db.Uuid
   store            Store                   @relation(fields: [storeId], references: [id], onDelete: Cascade)
@@ -424,6 +472,7 @@ model PrinterConfiguration {
   name             String
   connectionStatus PrinterConnectionStatus @default(DISCONNECTED) @map("connection_status")
   isPrimary        Boolean                 @default(false) @map("is_primary")
+  receiptSections  String[]                @default(["customer", "address", "payment", "notes", "totals"]) @map("receipt_sections")
   createdAt        DateTime                @default(now()) @map("created_at")
   updatedAt        DateTime                @updatedAt @map("updated_at")
 
@@ -529,6 +578,8 @@ model Order {
   store             Store?         @relation(fields: [storeId], references: [id], onDelete: SetNull)
   paymentMethodId   String?
   paymentMethod     PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  storePaymentMethodId String? @map("store_payment_method_id")
+  storePaymentMethod StorePaymentMethod? @relation(fields: [storePaymentMethodId], references: [id], onDelete: Restrict)
   promotionId       String?        @map("promotion_id")
   promotion         Promotion?     @relation(fields: [promotionId], references: [id], onDelete: SetNull)
   status            OrderStatus    @default(PENDING)
@@ -537,6 +588,9 @@ model Order {
   discount          Decimal        @default(0) @db.Decimal(10, 2)
   total             Decimal        @db.Decimal(10, 2)
   notes             String?
+  deliveryAreaId String? @map("delivery_area_id") @db.Uuid
+  deliveryArea DeliveryArea? @relation(fields: [deliveryAreaId], references: [id], onDelete: Restrict)
+  deliveryAreaSnapshot Json? @map("delivery_area_snapshot")
   estimatedDelivery DateTime?
   deliveredAt       DateTime?
   createdAt         DateTime       @default(now())
@@ -568,10 +622,11 @@ model WhatsAppMessageConfiguration {
   operation WhatsAppMessageOperation
   template  Json
   isActive  Boolean                  @default(true) @map("is_active")
+  paymentMethodId String?            @map("payment_method_id")
+  paymentMethod StorePaymentMethod?  @relation(fields: [paymentMethodId], references: [id], onDelete: Cascade)
   createdAt DateTime                 @default(now()) @map("created_at")
   updatedAt DateTime                 @updatedAt @map("updated_at")
 
-  @@unique([location, operation])
   @@index([location, operation, isActive])
   @@map("whatsapp_message_configurations")
 }
@@ -949,3 +1004,66 @@ model PoolWinner {
 
   @@map("pool_winners")
 }
+
+
+
+model NeighborhoodReference {
+  id String @id @db.Uuid
+  state String
+  cityCode String @map("city_code")
+  city String
+  sourceCode String @map("source_code")
+  name String
+  geometry Json
+  sourceHash String @map("source_hash")
+  partitions DeliveryPartition[]
+  @@unique([state, cityCode, sourceCode])
+  @@map("neighborhood_references")
+}
+model DeliveryPartition {
+  id String @id @default(uuid()) @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  neighborhoodId String @map("neighborhood_id") @db.Uuid
+  neighborhood NeighborhoodReference @relation(fields: [neighborhoodId], references: [id], onDelete: Restrict)
+  activeRevision Int @default(1) @map("active_revision")
+  revisions DeliveryPartitionRevision[]
+  @@unique([storeId, neighborhoodId])
+  @@unique([id, storeId])
+  @@map("delivery_partitions")
+}
+model DeliveryPartitionRevision {
+  id String @id @default(uuid()) @db.Uuid
+  partitionId String @map("partition_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  partition DeliveryPartition @relation(fields: [partitionId, storeId], references: [id, storeId], onDelete: Restrict)
+  revision Int
+  sourceHash String @map("source_hash")
+  cuts Json
+  requestId String @map("request_id") @db.Uuid
+  requestHash String @map("request_hash")
+  authorId String @map("author_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  areas DeliveryArea[]
+  @@unique([partitionId, revision])
+  @@unique([storeId, requestId])
+  @@unique([id, storeId])
+  @@map("delivery_partition_revisions")
+}
+model DeliveryArea {
+  id String @id @default(uuid()) @db.Uuid
+  revisionId String @map("revision_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  revision DeliveryPartitionRevision @relation(fields: [revisionId, storeId], references: [id, storeId], onDelete: Restrict)
+  index Int
+  name String
+  geometry Json
+  inheritedFrom Json @map("inherited_from")
+  rule StoreNeighborhoodShipping?
+  orders Order[]
+  @@unique([revisionId, index])
+  @@unique([id, storeId])
+  @@map("delivery_areas")
+}
+
+

@@ -142,7 +142,7 @@ export const register = async (
 	reply: FastifyReply
 ) => {
 	try {
-		const { email, password, name, phone } = request.body;
+		const { email, password, name, phone, cpf } = request.body;
 		const existingUser = await prisma.user.findUnique({
 			where: { email },
 			select: { id: true },
@@ -160,6 +160,7 @@ export const register = async (
 				password,
 				name,
 				phone,
+				...(cpf && { cpf }),
 			},
 		});
 		copyAuthHeaders(authResponse, reply);

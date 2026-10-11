@@ -99,12 +99,6 @@ export class OrderWhatsAppAutomationService {
 	}
 
 	private async dispatchEvent(orderId: string, transition: OrderListTransition) {
-		const configurations = await this.configurationRepository.findActiveByEvent(
-			transition.location,
-			transition.operation
-		);
-		if (configurations.length === 0) return;
-
 		const order = await this.orderRepository.findMessageData(orderId);
 		if (!order) {
 			this.logger.warn(
@@ -113,6 +107,18 @@ export class OrderWhatsAppAutomationService {
 			);
 			return;
 		}
+		const matchingConfigurations = await this.configurationRepository.findActiveByEvent(
+			transition.location,
+			transition.operation,
+			order.storePaymentMethodId
+		);
+		const specificConfigurations = matchingConfigurations.filter(
+			configuration => configuration.paymentMethodId === order.storePaymentMethodId
+		);
+		const configurations = specificConfigurations.length > 0
+			? specificConfigurations
+			: matchingConfigurations.filter(configuration => !configuration.paymentMethodId);
+		if (configurations.length === 0) return;
 		if (!order.user?.phone) {
 			this.logger.warn(
 				{ orderId, transition },
@@ -131,6 +137,7 @@ export class OrderWhatsAppAutomationService {
 						quantity: item.quantity,
 					})),
 					paymentType: order.paymentType,
+					paymentMethodName: order.storePaymentMethod?.name,
 					orderNumber: order.orderNumber,
 					phone: order.user.phone,
 					status: order.status as OrderStatus,

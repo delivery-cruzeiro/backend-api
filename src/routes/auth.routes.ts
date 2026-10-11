@@ -16,12 +16,13 @@ export async function authRoutes(fastify: FastifyInstance) {
 				tags: ['Autenticação'],
 				body: {
 					type: 'object',
-					required: ['email', 'password', 'name'],
+					required: ['email', 'password', 'name', 'phone'],
 					properties: {
 						email: { type: 'string', format: 'email' },
 						password: { type: 'string', minLength: 8, maxLength: 128 },
 						name: { type: 'string' },
-						phone: { type: 'string', nullable: true },
+						cpf: { type: 'string', maxLength: 14, nullable: true },
+						phone: { type: 'string', minLength: 1 },
 					},
 				},
 				response: {

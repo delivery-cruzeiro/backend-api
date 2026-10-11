@@ -13,8 +13,8 @@ importers:
   .:
     dependencies:
       '@delivery-cruzeiro/types':
-        specifier: file:vendor/delivery-cruzeiro-types-1.1.0.tgz
-        version: file:vendor/delivery-cruzeiro-types-1.1.0.tgz
+        specifier: file:vendor/delivery-cruzeiro-types-1.3.2.tgz
+        version: file:vendor/delivery-cruzeiro-types-1.3.2.tgz
       '@fastify/cors':
         specifier: ^10.0.1
         version: 10.1.0
@@ -304,9 +304,9 @@ packages:
       conventional-commits-parser:
         optional: true
 
-  '@delivery-cruzeiro/types@file:vendor/delivery-cruzeiro-types-1.1.0.tgz':
-    resolution: {integrity: sha512-ztT56o9YfGwXJfrdUtnVI2XSBbynBrl3jLtJhRVle5kaQqy9lM7UrRvxoC0ye9KKmCv96CXfiLJQDYlIzeGYiA==, tarball: file:vendor/delivery-cruzeiro-types-1.1.0.tgz}
-    version: 1.1.0
+  '@delivery-cruzeiro/types@file:vendor/delivery-cruzeiro-types-1.3.2.tgz':
+    resolution: {integrity: sha512-9WsHl0Zo8OYKSEQNnzZ+wha2IzlK7yEJmZIA326+RJoxbbjBYS7CiLJY++IzdvrUgEq+CvLOmScBd56utnByWQ==, tarball: file:vendor/delivery-cruzeiro-types-1.3.2.tgz}
+    version: 1.3.2
     engines: {node: '>=22.0.0'}
 
   '@electric-sql/pglite-socket@0.1.3':
@@ -2268,6 +2268,9 @@ packages:
   pkg-types@2.3.2:
     resolution: {integrity: sha512-v0sVXzj7oPGysr543YYZLYbcJNJsKikSsp/fFzoxQ12ewY3ZZr7oCPC8y7OlmxfYB3QPvriXmuPD8KZggE1vqg==}
 
+  polygon-clipping@0.15.7:
+    resolution: {integrity: sha512-nhfdr83ECBg6xtqOAJab1tbksbBAOMUltN60bU+llHVOL0e5Onm1WpAXXWXVB39L8AJFssoIhEVuy/S90MmotA==}
+
   postcss@8.5.28:
     resolution: {integrity: sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A==}
     engines: {node: ^10 || ^12 || >=14}
@@ -2496,6 +2499,10 @@ packages:
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
+
+  splaytree@3.2.3:
+    resolution: {integrity: sha512-7OXrNWzy6CK+r7Ch9OLPBDTKfB6XlWHjX4P0RU5B3IgFuWPeYN0XtRtlexGRjgbQxpfaUve6jTAwBGWuGntz/w==}
+    engines: {node: '>=18.20 || >=20'}
 
   split2@4.2.0:
     resolution: {integrity: sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==}
@@ -2965,8 +2972,9 @@ snapshots:
     optionalDependencies:
       conventional-commits-parser: 6.4.0
 
-  '@delivery-cruzeiro/types@file:vendor/delivery-cruzeiro-types-1.1.0.tgz':
+  '@delivery-cruzeiro/types@file:vendor/delivery-cruzeiro-types-1.3.2.tgz':
     dependencies:
+      polygon-clipping: 0.15.7
       zod: 4.5.4
 
   '@electric-sql/pglite-socket@0.1.3(@electric-sql/pglite@0.4.3)':
@@ -4830,6 +4838,11 @@ snapshots:
       exsolve: 1.1.1
       pathe: 2.0.3
 
+  polygon-clipping@0.15.7:
+    dependencies:
+      robust-predicates: 3.0.3
+      splaytree: 3.2.3
+
   postcss@8.5.28:
     dependencies:
       nanoid: 3.3.18
@@ -5050,6 +5063,8 @@ snapshots:
       atomic-sleep: 1.0.0
 
   source-map-js@1.2.1: {}
+
+  splaytree@3.2.3: {}
 
   split2@4.2.0: {}
 

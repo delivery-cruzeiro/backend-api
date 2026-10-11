@@ -18,6 +18,7 @@ import {
 import { serializeAdminOrder, serializeClientOrder } from './order-serialization.service.js';
 import { PromotionCouponService } from './promotion-coupon.service.js';
 import { StoreShippingService } from './store-shipping.service.js';
+import { composeProductAdditionalFields } from './product-additional-fields.service.js';
 
 type CreateClientOrderResult =
 	| {
@@ -131,7 +132,7 @@ export class ClientOrderService {
 		| Extract<CreateClientOrderResult, { success: false }>
 		| { success: true; data: Parameters<ClientOrderRepository['createClientOrder']>[0] }
 	> {
-		const { addressId, items, notes, paymentMethodId, paymentType, promotionId, storeId } = dto;
+		const { addressId, items, notes, paymentMethodId, paymentType, promotionId, storeId, storePaymentMethodId } = dto;
 		const store = await this.orderRepository.findActiveStoreById(storeId);
 
 		if (!store) {
@@ -177,6 +178,19 @@ export class ClientOrderService {
 			}
 		}
 
+		if (storePaymentMethodId) {
+			const storePaymentMethod = await this.orderRepository.findActiveStorePaymentMethod(
+				storePaymentMethodId,
+				storeId
+			);
+			if (!storePaymentMethod) {
+				return { error: 'Forma de pagamento indisponivel', statusCode: 404, success: false };
+			}
+			if (storePaymentMethod.type !== paymentType) {
+				return { error: 'Forma de pagamento invalida', statusCode: 400, success: false };
+			}
+		}
+
 		if (
 			(paymentType === PaymentType.CREDIT_CARD || paymentType === PaymentType.DEBIT_CARD) &&
 			!paymentMethodId
@@ -213,7 +227,13 @@ export class ClientOrderService {
 		for (const item of items) {
 			const product = productsById.get(item.productId);
 			const additionalFields = resolveAdditionalFields(
-				product?.additionalFields,
+				product
+					? composeProductAdditionalFields({
+						category: product.category,
+						product,
+						subcategory: product.subcategory,
+					})
+					: [],
 				item.additionalFieldValues
 			);
 
@@ -243,14 +263,16 @@ export class ClientOrderService {
 		);
 		const shippingQuote = address
 			? await this.storeShippingService.resolveShippingQuote({
+                    addressId: address.id,
 					neighborhood: address.neighborhood,
+ city: address.city, state: address.state, latitude: address.latitude, longitude: address.longitude, locationConfirmed: address.locationConfirmed,
 					storeId,
 				})
 			: null;
 
 		if (shippingQuote && !shippingQuote.isAvailable) {
 			return {
-				error: 'Bairro fora do mapa de entrega da loja',
+				error: shippingQuote.message ?? 'Bairro fora do mapa de entrega da loja',
 				statusCode: 400,
 				success: false,
 			};
@@ -280,12 +302,14 @@ export class ClientOrderService {
 			success: true,
 			data: {
 				addressId: addressId || store.addressId,
+ deliveryAreaId: shippingQuote?.areaId, deliveryAreaSnapshot: shippingQuote?.areaSnapshot,
 				deliveryFee,
 				discount,
 				items: orderItems,
 				notes,
 				paymentMethodId,
 				paymentType,
+				storePaymentMethodId,
 				promotionId,
 				status: OrderStatus.PENDING,
 				storeId,
@@ -319,3 +343,5 @@ export class ClientOrderService {
 		};
 	}
 }
+
+

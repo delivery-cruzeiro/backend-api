@@ -40,6 +40,8 @@ export const adminOrderSelect = {
 	},
 	paymentType: true,
 	paymentMethodId: true,
+	storePaymentMethodId: true,
+	storePaymentMethod: { select: { id: true, storeId: true, name: true, type: true, isActive: true, createdAt: true, updatedAt: true } },
 	promotionId: true,
 	status: true,
 	subtotal: true,
@@ -114,6 +116,8 @@ export const clientOrderSelect = {
 	},
 	paymentType: true,
 	paymentMethodId: true,
+	storePaymentMethodId: true,
+	storePaymentMethod: { select: { id: true, storeId: true, name: true, type: true, isActive: true, createdAt: true, updatedAt: true } },
 	promotionId: true,
 	paymentMethod: {
 		select: {
@@ -189,11 +193,13 @@ export interface ClientOrderRepository {
 	createClientOrder(input: {
 		addressId: string | null;
 		deliveryFee: number;
+ deliveryAreaId?: string; deliveryAreaSnapshot?: Prisma.InputJsonValue;
 		discount: number;
 		items: Prisma.OrderItemCreateManyOrderInput[];
 		notes?: string;
 		paymentType?: PaymentType;
 		paymentMethodId?: string;
+		storePaymentMethodId?: string;
 		promotionId?: string | null;
 		status: OrderStatus;
 		storeId: string;
@@ -202,10 +208,19 @@ export interface ClientOrderRepository {
 		userId: string;
 	}): Promise<ClientOrderRecord>;
 	findActivePaymentMethodForUser(id: string, userId: string): Promise<{ id: string } | null>;
+	findActiveStorePaymentMethod(id: string, storeId: string): Promise<{ id: string; type: PaymentType } | null>;
 	findActiveProductsByIds(
 		ids: string[],
 		storeId: string
-	): Promise<Array<{ additionalFields: Prisma.JsonValue; id: string; price: unknown }>>;
+	): Promise<
+		Array<{
+			additionalFields: Prisma.JsonValue;
+			category: { additionalFields: Prisma.JsonValue; id: string };
+			id: string;
+			price: unknown;
+			subcategory: { additionalFields: Prisma.JsonValue; id: string } | null;
+		}>
+	>;
 	findActiveStoreById(id: string): Promise<{ addressId: string; id: string } | null>;
 	findAddressForUser(
 		id: string,
@@ -216,6 +231,7 @@ export interface ClientOrderRepository {
 		neighborhood: string;
 		state: string;
 		zipCodeValidated: boolean;
+ latitude?: number | null; longitude?: number | null; locationConfirmed?: boolean;
 	} | null>;
 	findAdminOrderById(id: string): Promise<AdminOrderRecord | null>;
 }
@@ -276,11 +292,13 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 	async createClientOrder(input: {
 		addressId: string | null;
 		deliveryFee: number;
+ deliveryAreaId?: string; deliveryAreaSnapshot?: Prisma.InputJsonValue;
 		discount: number;
 		items: Prisma.OrderItemCreateManyOrderInput[];
 		notes?: string;
 		paymentType?: PaymentType;
 		paymentMethodId?: string;
+		storePaymentMethodId?: string;
 		promotionId?: string | null;
 		status: OrderStatus;
 		storeId: string;
@@ -292,6 +310,7 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 			data: {
 				addressId: input.addressId,
 				deliveryFee: input.deliveryFee,
+ deliveryAreaId: input.deliveryAreaId, deliveryAreaSnapshot: input.deliveryAreaSnapshot,
 				discount: input.discount,
 				items: {
 					createMany: {
@@ -301,6 +320,7 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 				notes: input.notes,
 				paymentType: input.paymentType,
 				paymentMethodId: input.paymentMethodId,
+				storePaymentMethodId: input.storePaymentMethodId,
 				promotionId: input.promotionId,
 				status: input.status,
 				storeId: input.storeId,
@@ -319,6 +339,13 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 		});
 	}
 
+	async findActiveStorePaymentMethod(id: string, storeId: string) {
+		return this.database.storePaymentMethod.findFirst({
+			where: { id, isActive: true, storeId },
+			select: { id: true, type: true },
+		}) as Promise<{ id: string; type: PaymentType } | null>;
+	}
+
 	async findActiveProductsByIds(ids: string[], storeId: string) {
 		return this.database.product.findMany({
 			where: {
@@ -332,8 +359,10 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 			},
 			select: {
 				additionalFields: true,
+				category: { select: { additionalFields: true, id: true } },
 				id: true,
 				price: true,
+				subcategory: { select: { additionalFields: true, id: true } },
 			},
 		});
 	}
@@ -360,6 +389,7 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 				neighborhood: true,
 				state: true,
 				zipCodeValidated: true,
+ latitude: true, longitude: true, locationConfirmed: true,
 			},
 		});
 	}
@@ -371,3 +401,4 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 		});
 	}
 }
+

@@ -27,6 +27,8 @@ const storeSummarySchema = {
 const productAdditionalFieldSchema = {
 	type: 'object',
 	properties: {
+		additionalValue: { type: 'number', minimum: 0, maximum: 999.99 },
+		definitionId: { type: 'string' },
 		id: { type: 'string' },
 		label: { type: 'string' },
 		options: {
@@ -37,6 +39,8 @@ const productAdditionalFieldSchema = {
 			type: 'string',
 			enum: ['COMBOBOX', 'CHECKBOX', 'TEXT', 'RADIO'],
 		},
+		source: { type: 'string', enum: ['CATEGORY', 'PRODUCT', 'SUBCATEGORY'] },
+		sourceId: { type: 'string' },
 	},
 };
 

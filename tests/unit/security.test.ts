@@ -1,7 +1,7 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import Fastify from 'fastify';
 import {registerSecurityHooks,minimizeResponse} from '../../src/security/http.js';
-import {securityConfig,hasUrlCredential} from '../../src/security/config.js';
+import {securityConfig,hasUrlCredential,isAllowedOrigin} from '../../src/security/config.js';
 import {encryptValue,decryptValue,encryptData,decryptResult} from '../../src/security/encryption.js';
 import {databaseIdentity} from '../../src/security/database-context.js';
 import {validateZod} from '../../src/middleware/validate-zod.middleware.js';
@@ -13,6 +13,16 @@ describe('HTTP security boundaries',()=>{
   expect(()=>securityConfig({NODE_ENV:'production',PUBLIC_URL:'http://example.org',ALLOW_INSECURE_LOCALHOST:'true'})).toThrow();
   expect(securityConfig({NODE_ENV:'production',PUBLIC_URL:'http://localhost:8080',ALLOW_INSECURE_LOCALHOST:'true',BETTER_AUTH_SECRET:'s'.repeat(32),DATA_ENCRYPTION_KEY:'ab'.repeat(32)}).secureCookies).toBe(false);
   expect(()=>securityConfig({PUBLIC_URL:'https://example.org',CORS_ORIGIN:'https://*.example.org'})).toThrow();
+ });
+ it('permits only secure trycloudflare subdomains when its explicit pattern is configured',()=>{
+  const origins=securityConfig({PUBLIC_URL:'https://example.org',CORS_ORIGIN:'https://*.trycloudflare.com'}).origins;
+  expect(isAllowedOrigin('https://location-effort-touched-tradition.trycloudflare.com',origins)).toBe(true);
+  expect(isAllowedOrigin('https://another.trycloudflare.com',origins)).toBe(true);
+  expect(isAllowedOrigin('http://another.trycloudflare.com',origins)).toBe(false);
+  expect(isAllowedOrigin('https://trycloudflare.com',origins)).toBe(false);
+  expect(isAllowedOrigin('https://another.trycloudflare.com:8443',origins)).toBe(false);
+  expect(isAllowedOrigin('https://another.trycloudflare.com.evil.test',origins)).toBe(false);
+  expect(isAllowedOrigin('https://another.trycloudflare.com/path',origins)).toBe(false);
  });
  it('rejects encoded credential keys in URLs',()=>{
   for(const url of ['/api?token=abc','/api?%74oken=abc','/api?access_token=abc','/api?apiKey=abc']) expect(hasUrlCredential(url)).toBe(true);

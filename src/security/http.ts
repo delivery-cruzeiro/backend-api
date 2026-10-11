@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { securityConfig, hasUrlCredential } from './config.js';
+import { securityConfig, hasUrlCredential, isAllowedOrigin } from './config.js';
 import { databaseIdentity } from './database-context.js';
 
 const privateFields = new Set(['password','passwordHash','accessToken','refreshToken','idToken','token','apiKey','secret','privateKeyPem','certificatePassword','providerId']);
@@ -15,7 +15,7 @@ export function registerSecurityHooks(app: FastifyInstance) {
  app.addHook('onRequest', async (req, reply) => {
   if (hasUrlCredential(req.url)) return reply.code(400).send({error:'Credenciais devem ser enviadas em headers, nunca na URL'});
   const origin = req.headers.origin;
-  if (origin && !config.origins.includes(origin)) return reply.code(403).send({error:'Origem nao permitida'});
+  if (!isAllowedOrigin(origin, config.origins)) return reply.code(403).send({error:'Origem nao permitida'});
   if (!['GET','HEAD','OPTIONS'].includes(req.method) && req.headers['sec-fetch-site'] === 'cross-site') return reply.code(403).send({error:'Origem nao permitida'});
   if (config.secureCookies && req.url !== '/health' && req.protocol !== 'https') return reply.code(400).send({error:'HTTPS obrigatorio'});
   if (req.url.startsWith('/api/')) reply.header('Cache-Control','no-store');

@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { buildStoreFilter, storeSummaryListArgs } from '../services/catalog-store.utils.js';
 
 export const subcategorySelect = {
+	additionalFields: true,
 	id: true,
 	categoryId: true,
 	category: {
@@ -24,6 +25,7 @@ export const subcategorySelect = {
 export type SubcategoryRecord = Prisma.SubcategoryGetPayload<{ select: typeof subcategorySelect }>;
 
 type SubcategoryMutationData = {
+	additionalFields?: Prisma.InputJsonValue;
 	categoryId?: string;
 	description?: string;
 	imageUrl?: string;
@@ -50,6 +52,7 @@ export class SubcategoryRepository {
 	) {
 		return prisma.subcategory.create({
 			data: {
+				additionalFields: data.additionalFields ?? [],
 				categoryId: data.categoryId,
 				description: data.description,
 				imageUrl: data.imageUrl,

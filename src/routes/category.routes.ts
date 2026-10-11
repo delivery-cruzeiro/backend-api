@@ -21,6 +21,17 @@ const storeSummarySchema = {
 	},
 };
 
+const additionalFieldSchema = {
+	type: 'object',
+	properties: {
+		additionalValue: { type: 'number', minimum: 0, maximum: 999.99 },
+		id: { type: 'string' },
+		label: { type: 'string' },
+		options: { type: 'array', items: { type: 'string' } },
+		type: { type: 'string', enum: ['COMBOBOX', 'CHECKBOX', 'TEXT', 'RADIO'] },
+	},
+};
+
 export async function categoryRoutes(fastify: FastifyInstance) {
 	fastify.get(
 		'/categories',
@@ -37,6 +48,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
 								items: {
 									type: 'object',
 									properties: {
+										additionalFields: { type: 'array', items: additionalFieldSchema },
 										id: { type: 'string' },
 										name: { type: 'string' },
 										description: { type: 'string', nullable: true },
@@ -77,6 +89,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
 							category: {
 								type: 'object',
 								properties: {
+									additionalFields: { type: 'array', items: additionalFieldSchema },
 									id: { type: 'string' },
 									name: { type: 'string' },
 									description: { type: 'string', nullable: true },

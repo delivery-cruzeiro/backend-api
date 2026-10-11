@@ -12,11 +12,28 @@ import {
 function record(data: Partial<PrinterConfigurationRecord> = {}): PrinterConfigurationRecord {
 	return {
 		id: 'printer-1',
+		transport: 'WEB_SERIAL',
+		windowsQueueId: null,
+		windowsQueueName: null,
+		windowsDriverName: null,
+		windowsPortName: null,
+		windowsPrintProcessor: null,
+		windowsDataType: null,
+		windowsCapabilities: null,
+		adapterId: 'esc-pos',
+		columns: 48,
+		encoding: 'cp850',
+		autoCut: true,
+		copies: 1,
+		lastSeenAt: null,
+		lastKnownStatus: null,
+		bridgeInstallationId: null,
 		storeId: 'store-1',
 		connectionId: 'webserial:1:2:0',
 		name: 'Caixa',
 		connectionStatus: PrinterConnectionStatus.CONNECTED,
 		isPrimary: false,
+		receiptSections: ['customer', 'address', 'payment', 'notes', 'totals'],
 		createdAt: new Date('2026-09-03T12:00:00Z'),
 		updatedAt: new Date('2026-09-03T12:00:00Z'),
 		categories: [],
@@ -47,12 +64,15 @@ describe('PrinterConfigurationService', () => {
 	it('define automaticamente a primeira impressora da loja como principal', async () => {
 		const repo = repository();
 		const service = new PrinterConfigurationService(repo);
-		const printer = await service.create({
-			storeId: 'store-1',
-			connectionId: 'webserial:1:2:0',
-			name: 'Caixa',
-			connectionStatus: PrinterConnectionStatus.CONNECTED,
-		}, actor);
+		const printer = await service.create(
+			{
+				storeId: 'store-1',
+				connectionId: 'webserial:1:2:0',
+				name: 'Caixa',
+				connectionStatus: PrinterConnectionStatus.CONNECTED,
+			},
+			actor
+		);
 
 		expect(repo.create).toHaveBeenCalledWith(expect.any(Object), true);
 		expect(printer.isPrimary).toBe(true);
@@ -69,12 +89,79 @@ describe('PrinterConfigurationService', () => {
 		const repo = repository({ validateAssignments: vi.fn().mockResolvedValue(false) });
 		const service = new PrinterConfigurationService(repo);
 
-		await expect(service.setAssignments('printer-1', {
-			categoryIds: ['outside'],
-			subcategoryIds: [],
-		}, actor)).rejects.toEqual(expect.objectContaining<Partial<PrinterConfigurationError>>({
-			statusCode: 400,
-		}));
+		await expect(
+			service.setAssignments(
+				'printer-1',
+				{
+					categoryIds: ['outside'],
+					subcategoryIds: [],
+				},
+				actor
+			)
+		).rejects.toEqual(
+			expect.objectContaining<Partial<PrinterConfigurationError>>({
+				statusCode: 400,
+			})
+		);
 		expect(repo.setAssignments).not.toHaveBeenCalled();
+	});
+});
+
+describe('persisted Windows configuration', () => {
+	const windows = record({
+		transport: 'WINDOWS_BRIDGE',
+		windowsQueueId: 'queue1',
+		windowsQueueName: 'Windows Queue',
+		windowsDriverName: 'Driver',
+		windowsCapabilities: { raw: true },
+		lastSeenAt: new Date('2026-10-03T12:00:00Z'),
+	});
+	it.each(['ADMIN', 'MANAGER', 'SUPER_ADMIN'])(
+		'serializes Windows properties and assignments for %s',
+		async role => {
+			const repo = repository({ list: vi.fn().mockResolvedValue([windows]) });
+			const result = await new PrinterConfigurationService(repo).list('store-1', {
+				...actor,
+				role,
+			});
+			expect(result[0]).toMatchObject({
+				transport: 'WINDOWS_BRIDGE',
+				windowsQueueId: 'queue1',
+				windowsCapabilities: { raw: true },
+				lastSeenAt: '2026-10-03T12:00:00.000Z',
+				categoryIds: [],
+			});
+		}
+	);
+	it('rejects another store and does not read its printer records', async () => {
+		const repo = repository({ hasStoreAccess: vi.fn().mockResolvedValue(false) });
+		await expect(
+			new PrinterConfigurationService(repo).list('outside', actor)
+		).rejects.toMatchObject({ statusCode: 404 });
+		expect(repo.list).not.toHaveBeenCalled();
+	});
+	it('translates duplicate queue errors into conflict', async () => {
+		const repo = repository({ create: vi.fn().mockRejectedValue({ code: 'P2002' }) });
+		await expect(
+			new PrinterConfigurationService(repo).create(
+				{
+					storeId: 'store-1',
+					connectionId: 'serial',
+					name: 'Caixa',
+					connectionStatus: PrinterConnectionStatus.CONNECTED,
+				},
+				actor
+			)
+		).rejects.toMatchObject({ statusCode: 409 });
+	});
+	it('validates partial updates against the persisted transport', async () => {
+		const repo = repository({ findById: vi.fn().mockResolvedValue(windows) });
+		const service = new PrinterConfigurationService(repo);
+		await expect(
+			service.update('printer-1', { adapterId: 'generic' }, actor)
+		).rejects.toMatchObject({ statusCode: 400 });
+		expect(repo.update).not.toHaveBeenCalled();
+		await service.update('printer-1', { adapterId: 'generic', autoCut: false }, actor);
+		expect(repo.update).toHaveBeenCalled();
 	});
 });

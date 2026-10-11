@@ -3,10 +3,27 @@ import type {
 	SetPrinterAssignmentsDTO,
 	UpdatePrinterConfigurationDTO,
 } from '@delivery-cruzeiro/types';
-import type { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 
 export const printerConfigurationSelect = {
+	receiptSections: true,
+	transport: true,
+	windowsQueueId: true,
+	windowsQueueName: true,
+	windowsDriverName: true,
+	windowsPortName: true,
+	windowsPrintProcessor: true,
+	windowsDataType: true,
+	windowsCapabilities: true,
+	adapterId: true,
+	columns: true,
+	encoding: true,
+	autoCut: true,
+	copies: true,
+	lastSeenAt: true,
+	lastKnownStatus: true,
+	bridgeInstallationId: true,
 	id: true,
 	storeId: true,
 	connectionId: true,
@@ -25,7 +42,10 @@ export type PrinterConfigurationRecord = Prisma.PrinterConfigurationGetPayload<{
 
 export interface PrinterConfigurationRepository {
 	countByStore(storeId: string): Promise<number>;
-	create(data: CreatePrinterConfigurationDTO, isPrimary: boolean): Promise<PrinterConfigurationRecord>;
+	create(
+		data: CreatePrinterConfigurationDTO,
+		isPrimary: boolean
+	): Promise<PrinterConfigurationRecord>;
 	delete(id: string): Promise<void>;
 	findById(id: string): Promise<PrinterConfigurationRecord | null>;
 	hasStoreAccess(userId: string, role: string, storeId: string): Promise<boolean>;
@@ -33,7 +53,11 @@ export interface PrinterConfigurationRepository {
 	setAssignments(id: string, data: SetPrinterAssignmentsDTO): Promise<PrinterConfigurationRecord>;
 	setPrimary(id: string, storeId: string): Promise<PrinterConfigurationRecord>;
 	update(id: string, data: UpdatePrinterConfigurationDTO): Promise<PrinterConfigurationRecord>;
-	validateAssignments(storeId: string, categoryIds: string[], subcategoryIds: string[]): Promise<boolean>;
+	validateAssignments(
+		storeId: string,
+		categoryIds: string[],
+		subcategoryIds: string[]
+	): Promise<boolean>;
 }
 
 export class PrismaPrinterConfigurationRepository implements PrinterConfigurationRepository {
@@ -45,7 +69,11 @@ export class PrismaPrinterConfigurationRepository implements PrinterConfiguratio
 
 	create(data: CreatePrinterConfigurationDTO, isPrimary: boolean) {
 		return this.database.printerConfiguration.create({
-			data: { ...data, isPrimary },
+			data: {
+				...data,
+				windowsCapabilities: data.windowsCapabilities ?? Prisma.DbNull,
+				isPrimary,
+			},
 			select: printerConfigurationSelect,
 		});
 	}
@@ -80,10 +108,15 @@ export class PrismaPrinterConfigurationRepository implements PrinterConfiguratio
 	}
 
 	async hasStoreAccess(userId: string, role: string, storeId: string) {
-		return Boolean(await this.database.store.findFirst({
-			where: { id: storeId, ...(role !== 'SUPER_ADMIN' && { users: { some: { id: userId } } }) },
-			select: { id: true },
-		}));
+		return Boolean(
+			await this.database.store.findFirst({
+				where: {
+					id: storeId,
+					...(role !== 'SUPER_ADMIN' && { users: { some: { id: userId } } }),
+				},
+				select: { id: true },
+			})
+		);
 	}
 
 	list(storeId: string) {
@@ -99,6 +132,12 @@ export class PrismaPrinterConfigurationRepository implements PrinterConfiguratio
 		const subcategoryIds = [...new Set(data.subcategoryIds)];
 		await this.database.$transaction(async transaction => {
 			await transaction.printerCategory.deleteMany({ where: { printerId: id } });
+			if (data.receiptSections !== undefined) {
+				await transaction.printerConfiguration.update({
+					where: { id },
+					data: { receiptSections: [...new Set(data.receiptSections)] },
+				});
+			}
 			await transaction.printerSubcategory.deleteMany({ where: { printerId: id } });
 			if (categoryIds.length > 0) {
 				await transaction.printerCategory.createMany({
@@ -123,7 +162,10 @@ export class PrismaPrinterConfigurationRepository implements PrinterConfiguratio
 				where: { storeId, isPrimary: true, id: { not: id } },
 				data: { isPrimary: false },
 			});
-			await transaction.printerConfiguration.update({ where: { id }, data: { isPrimary: true } });
+			await transaction.printerConfiguration.update({
+				where: { id },
+				data: { isPrimary: true },
+			});
 		});
 		return this.database.printerConfiguration.findUniqueOrThrow({
 			where: { id },
@@ -135,8 +177,10 @@ export class PrismaPrinterConfigurationRepository implements PrinterConfiguratio
 		return this.database.printerConfiguration.update({
 			where: { id },
 			data: {
-				...(data.name !== undefined && { name: data.name }),
-				...(data.connectionStatus !== undefined && { connectionStatus: data.connectionStatus }),
+				...data,
+				isPrimary: undefined,
+				windowsCapabilities:
+					data.windowsCapabilities === null ? Prisma.DbNull : data.windowsCapabilities,
 			},
 			select: printerConfigurationSelect,
 		});
@@ -153,6 +197,9 @@ export class PrismaPrinterConfigurationRepository implements PrinterConfiguratio
 				where: { id: { in: uniqueSubcategories }, stores: { some: { id: storeId } } },
 			}),
 		]);
-		return categoryCount === uniqueCategories.length && subcategoryCount === uniqueSubcategories.length;
+		return (
+			categoryCount === uniqueCategories.length &&
+			subcategoryCount === uniqueSubcategories.length
+		);
 	}
 }

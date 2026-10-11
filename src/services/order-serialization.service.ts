@@ -26,6 +26,9 @@ export function serializeAdminOrder(order: AdminOrderRecord): AdminOrder {
 					type: order.paymentMethod.type as PaymentType,
 				}
 			: null,
+		storePaymentMethod: order.storePaymentMethod
+			? { ...order.storePaymentMethod, type: order.storePaymentMethod.type as PaymentType }
+			: null,
 		status: order.status as OrderStatus,
 		subtotal: Number(order.subtotal),
 		total: Number(order.total),
@@ -41,6 +44,9 @@ export function serializeClientOrder(order: ClientOrderRecord) {
 			...item,
 			price: Number(item.price),
 		})),
+		storePaymentMethod: order.storePaymentMethod
+			? { ...order.storePaymentMethod, type: order.storePaymentMethod.type as PaymentType }
+			: null,
 		status: order.status as OrderStatus,
 		subtotal: Number(order.subtotal),
 		total: Number(order.total),

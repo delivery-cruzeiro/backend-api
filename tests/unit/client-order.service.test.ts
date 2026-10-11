@@ -81,11 +81,48 @@ describe('ClientOrderService', () => {
 		repository = {
 			createClientOrder: vi.fn(),
 			findActivePaymentMethodForUser: vi.fn(),
+			findActiveStorePaymentMethod: vi.fn(),
 			findActiveProductsByIds: vi.fn(),
 			findActiveStoreById: vi.fn(),
 			findAddressForUser: vi.fn(),
 			findAdminOrderById: vi.fn(),
 		};
+	});
+
+	it('aceita somente uma forma de pagamento ativa da loja e persiste a referencia', async () => {
+		vi.mocked(repository.findActiveStoreById).mockResolvedValue({ addressId: 'store-address-1', id: 'store-1' });
+		vi.mocked(repository.findActiveStorePaymentMethod).mockResolvedValue({ id: 'store-payment-1', type: PaymentType.PIX });
+		vi.mocked(repository.findActiveProductsByIds).mockResolvedValue([{ id: 'product-1', price: 10 } as never]);
+		vi.mocked(repository.createClientOrder).mockResolvedValue(createClientOrderRecord());
+		vi.mocked(repository.findAdminOrderById).mockResolvedValue(null);
+		const service = new ClientOrderService(repository, orderEvents);
+
+		const result = await service.createOrder('user-1', {
+			items: [{ productId: 'product-1', quantity: 1 }],
+			paymentType: PaymentType.PIX,
+			storeId: 'store-1',
+			storePaymentMethodId: 'store-payment-1',
+		});
+
+		expect(result.success).toBe(true);
+		expect(repository.createClientOrder).toHaveBeenCalledWith(expect.objectContaining({
+			paymentType: PaymentType.PIX,
+			storePaymentMethodId: 'store-payment-1',
+		}));
+	});
+
+	it('rejeita forma de pagamento inativa ou pertencente a outra loja', async () => {
+		vi.mocked(repository.findActiveStoreById).mockResolvedValue({ addressId: 'store-address-1', id: 'store-1' });
+		vi.mocked(repository.findActiveStorePaymentMethod).mockResolvedValue(null);
+		const service = new ClientOrderService(repository, orderEvents);
+		const result = await service.createOrder('user-1', {
+			items: [{ productId: 'product-1', quantity: 1 }],
+			paymentType: PaymentType.CASH,
+			storeId: 'store-1',
+			storePaymentMethodId: 'unavailable-payment',
+		});
+		expect(result).toEqual({ error: 'Forma de pagamento indisponivel', statusCode: 404, success: false });
+		expect(repository.createClientOrder).not.toHaveBeenCalled();
 	});
 
 	it('cria pedido e emite evento websocket para atendentes', async () => {
@@ -173,6 +210,82 @@ describe('ClientOrderService', () => {
 						{
 							additionalValue: 999,
 							fieldId: 'field-1',
+							label: 'Valor adulterado',
+							type: 'CHECKBOX',
+							value: true,
+						},
+					],
+					productId: 'product-1',
+					quantity: 2,
+				},
+			],
+			paymentType: PaymentType.CASH,
+			storeId: 'store-1',
+		});
+
+		expect(repository.createClientOrder).toHaveBeenCalledWith(
+			expect.objectContaining({
+				items: [expect.objectContaining({ price: 13.5 })],
+				subtotal: 27,
+				total: 27,
+			})
+		);
+	});
+
+	it('recalcula adicionais herdados de categoria e subcategoria', async () => {
+		vi.mocked(repository.findActiveProductsByIds).mockResolvedValue([
+			{
+				additionalFields: [],
+				category: {
+					additionalFields: [
+						{
+							additionalValue: 2,
+							id: 'category-extra',
+							label: 'Embalagem especial',
+							options: [],
+							type: 'CHECKBOX',
+						},
+					],
+					id: 'category-1',
+				},
+				id: 'product-1',
+				price: 10,
+				subcategory: {
+					additionalFields: [
+						{
+							additionalValue: 1.5,
+							id: 'subcategory-extra',
+							label: 'Molho extra',
+							options: [],
+							type: 'CHECKBOX',
+						},
+					],
+					id: 'subcategory-1',
+				},
+			},
+		]);
+		vi.mocked(repository.findActiveStoreById).mockResolvedValue({
+			addressId: 'store-address-1',
+			id: 'store-1',
+		});
+		vi.mocked(repository.createClientOrder).mockResolvedValue(createClientOrderRecord());
+		vi.mocked(repository.findAdminOrderById).mockResolvedValue(null);
+		const service = new ClientOrderService(repository, orderEvents);
+
+		await service.createOrder('user-1', {
+			items: [
+				{
+					additionalFieldValues: [
+						{
+							additionalValue: 999,
+							fieldId: 'category:category-1:category-extra',
+							label: 'Valor adulterado',
+							type: 'CHECKBOX',
+							value: true,
+						},
+						{
+							additionalValue: 999,
+							fieldId: 'subcategory:subcategory-1:subcategory-extra',
 							label: 'Valor adulterado',
 							type: 'CHECKBOX',
 							value: true,

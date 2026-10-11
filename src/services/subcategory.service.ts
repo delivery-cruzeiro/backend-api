@@ -17,6 +17,7 @@ export class SubcategoryService {
 		const imageUrl = await this.resolveImageUrl(input, image);
 
 		return this.repository.create({
+			additionalFields: input.additionalFields,
 			categoryId: input.categoryId,
 			description: input.description,
 			imageUrl,
