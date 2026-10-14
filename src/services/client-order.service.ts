@@ -1,11 +1,8 @@
+import { resolveAdditionalFields } from './configurable-fields.service.js';
 import {
 	OrderStatus,
 	PaymentType,
-	ProductAdditionalFieldType,
-	productAdditionalFieldSchema,
 	type ClientOrderDTO,
-	type ProductAdditionalFieldDTO,
-	type ProductAdditionalFieldValueDTO,
 } from '@delivery-cruzeiro/types';
 import {
 	orderEventsEmitter,
@@ -30,92 +27,6 @@ type CreateClientOrderResult =
 			statusCode: 400 | 403 | 404 | 409;
 			success: false;
 	  };
-
-function formatAdditionalValue(value: number) {
-	return value.toLocaleString('pt-BR', { currency: 'BRL', style: 'currency' });
-}
-
-function resolveAdditionalFields(
-	configuredFieldsValue: unknown,
-	selectedValues: ProductAdditionalFieldValueDTO[] = []
-): { error: string; success: false } | { additionalValue: number; notes: string; success: true } {
-	const configuredFieldsInput = configuredFieldsValue ?? [];
-	if (!Array.isArray(configuredFieldsInput)) {
-		return {
-			error: 'Configuracao de campos adicionais do produto invalida',
-			success: false,
-		};
-	}
-
-	const configuredFieldsList: ProductAdditionalFieldDTO[] = [];
-	for (const configuredFieldValue of configuredFieldsInput) {
-		const configuredField = productAdditionalFieldSchema.safeParse(configuredFieldValue);
-		if (!configuredField.success) {
-			return {
-				error: 'Configuracao de campos adicionais do produto invalida',
-				success: false,
-			};
-		}
-		configuredFieldsList.push(configuredField.data);
-	}
-
-	const configuredFields = new Map(configuredFieldsList.map(field => [field.id, field]));
-	const selectedIds = new Set<string>();
-	const normalizedValues: ProductAdditionalFieldValueDTO[] = [];
-
-	for (const selectedValue of selectedValues) {
-		if (selectedIds.has(selectedValue.fieldId)) {
-			return { error: 'Campo adicional duplicado no produto', success: false };
-		}
-
-		selectedIds.add(selectedValue.fieldId);
-		const configuredField = configuredFields.get(selectedValue.fieldId);
-
-		if (!configuredField || configuredField.type !== selectedValue.type) {
-			return { error: 'Campo adicional do produto nao encontrado', success: false };
-		}
-
-		const value = selectedValue.value;
-		const isValidValue =
-			configuredField.type === ProductAdditionalFieldType.CHECKBOX
-				? value === true
-				: typeof value === 'string' &&
-					value.trim().length > 0 &&
-					(configuredField.type === ProductAdditionalFieldType.TEXT ||
-						configuredField.options.includes(value));
-
-		if (!isValidValue) {
-			return { error: 'Valor de campo adicional do produto invalido', success: false };
-		}
-
-		normalizedValues.push({
-			additionalValue: configuredField.additionalValue,
-			fieldId: configuredField.id,
-			label: configuredField.label,
-			type: configuredField.type,
-			value,
-		});
-	}
-
-	const additionalValue = normalizedValues.reduce(
-		(total, field) => total + Number(field.additionalValue ?? 0),
-		0
-	);
-	const notes = normalizedValues
-		.map(field => {
-			const displayedValue =
-				field.type === ProductAdditionalFieldType.CHECKBOX
-					? field.label
-					: `${field.label}: ${field.value}`;
-			const price = Number(field.additionalValue ?? 0);
-			return price > 0
-				? `${displayedValue} (+${formatAdditionalValue(price)})`
-				: displayedValue;
-		})
-		.join('\n');
-
-	return { additionalValue, notes, success: true };
-}
 
 export class ClientOrderService {
 	constructor(
@@ -178,6 +89,7 @@ export class ClientOrderService {
 			}
 		}
 
+		let paymentFields = resolveAdditionalFields([], dto.paymentFieldValues);
 		if (storePaymentMethodId) {
 			const storePaymentMethod = await this.orderRepository.findActiveStorePaymentMethod(
 				storePaymentMethodId,
@@ -189,7 +101,10 @@ export class ClientOrderService {
 			if (storePaymentMethod.type !== paymentType) {
 				return { error: 'Forma de pagamento invalida', statusCode: 400, success: false };
 			}
+			paymentFields = resolveAdditionalFields(storePaymentMethod.fields, dto.paymentFieldValues);
 		}
+		if (!paymentFields.success) return { error: 'Campos do pagamento inválidos: ' + paymentFields.error, statusCode: 400, success: false };
+		if (paymentType === PaymentType.CUSTOM && !storePaymentMethodId) return { error: 'Selecione uma forma de pagamento', statusCode: 400, success: false };
 
 		if (
 			(paymentType === PaymentType.CREDIT_CARD || paymentType === PaymentType.DEBIT_CARD) &&
@@ -296,7 +211,7 @@ export class ClientOrderService {
 			discount = couponResult.discount;
 		}
 
-		const total = subtotal + deliveryFee - discount;
+		const total = Math.round((subtotal + deliveryFee + paymentFields.additionalValue - discount) * 100) / 100;
 
 		return {
 			success: true,
@@ -304,9 +219,12 @@ export class ClientOrderService {
 				addressId: addressId || store.addressId,
  deliveryAreaId: shippingQuote?.areaId, deliveryAreaSnapshot: shippingQuote?.areaSnapshot,
 				deliveryFee,
+				deliveryMinutes: shippingQuote?.shippingTime,
+				paymentAdditionalValue: paymentFields.additionalValue,
+				paymentFieldValues: paymentFields.values,
 				discount,
 				items: orderItems,
-				notes,
+				notes: [notes, paymentFields.notes && `Pagamento:\n${paymentFields.notes}`].filter(Boolean).join('\n') || undefined,
 				paymentMethodId,
 				paymentType,
 				storePaymentMethodId,

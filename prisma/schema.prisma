@@ -342,6 +342,7 @@ model PaymentMethod {
 }
 
 model StorePaymentMethod {
+  fields    Json        @default("[]")
   id        String      @id @default(cuid())
   storeId   String      @map("store_id") @db.Uuid
   store     Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
@@ -360,6 +361,7 @@ model StorePaymentMethod {
 }
 
 enum PaymentType {
+  CUSTOM
   CREDIT_CARD
   DEBIT_CARD
   PIX
@@ -567,6 +569,10 @@ model ProductBadge {
 // ============================================
 
 model Order {
+  confirmedAt DateTime? @map("confirmed_at")
+  deliveryMinutes Int? @map("delivery_minutes")
+  paymentAdditionalValue Decimal @default(0) @map("payment_additional_value") @db.Decimal(10, 2)
+  paymentFieldValues Json @default("[]") @map("payment_field_values")
   paymentType       PaymentType?
   id                String         @id @default(cuid())
   orderNumber       Int            @unique @default(autoincrement())

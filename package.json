@@ -35,7 +35,7 @@
   "author": "Guilherme P. Soares",
   "license": "MIT",
   "dependencies": {
-    "@delivery-cruzeiro/types": "file:vendor/delivery-cruzeiro-types-1.3.2.tgz",
+    "@delivery-cruzeiro/types": "file:vendor/delivery-cruzeiro-types-1.3.5.tgz",
     "@fastify/cors": "^10.0.1",
     "@fastify/helmet": "^13.0.0",
     "@fastify/multipart": "^9.4.0",

@@ -12,6 +12,7 @@ const select = {
 	storeId: true,
 	name: true,
 	type: true,
+	fields: true,
 	isActive: true,
 	createdAt: true,
 	updatedAt: true,

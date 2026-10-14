@@ -22,6 +22,7 @@ import type { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import { prisma } from '../lib/prisma.js';
 import { ClientOrderService } from '../services/client-order.service.js';
 import { CheckoutPixService } from '../services/checkout-pix.service.js';
+import { getWhatsAppService } from '../integrations/whatsapp/whatsapp.factory.js';
 const checkoutPixService = new CheckoutPixService();
 
 export const sendClientCheckoutPix = async (request: AuthenticatedRequest, reply: FastifyReply) => {
@@ -168,6 +169,7 @@ const orderSelect = {
 	total: true,
 	notes: true,
 	estimatedDelivery: true,
+ confirmedAt: true, deliveryMinutes: true, paymentAdditionalValue: true, paymentFieldValues: true,
 	deliveredAt: true,
 	createdAt: true,
 	updatedAt: true,
@@ -210,6 +212,7 @@ function serializeOrder(order: {
 	return {
 		...order,
 		deliveryFee: Number(order.deliveryFee),
+ paymentAdditionalValue: Number(order.paymentAdditionalValue ?? 0),
 		discount: Number(order.discount),
 		items: order.items.map(item => ({
 			...item,
@@ -678,6 +681,21 @@ export const getClientOrderById = async (
 	return reply.send({
 		order: serializeOrder(order),
 	});
+};
+
+export const getClientOrderContact = async (
+ request: FastifyRequest<{ Params: { id: string } }> & AuthenticatedRequest,
+ reply: FastifyReply
+) => {
+ const order = await prisma.order.findFirst({ where: { id: request.params.id, userId: getUserId(request) }, select: { id: true } });
+ if (!order) return reply.status(404).send({ error: 'Pedido não encontrado' });
+ reply.header('Cache-Control', 'no-store');
+ try {
+  const status = await getWhatsAppService().getStatus();
+  return reply.send({ phone: status.connected ? status.phone?.replace(/\D/g, '') || null : null });
+ } catch {
+  return reply.status(503).send({ error: 'Contato por WhatsApp indisponível no momento. Tente novamente.' });
+ }
 };
 
 

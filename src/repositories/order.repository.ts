@@ -50,6 +50,7 @@ export const adminOrderSelect = {
 	total: true,
 	notes: true,
 	estimatedDelivery: true,
+ confirmedAt: true, deliveryMinutes: true, paymentAdditionalValue: true, paymentFieldValues: true,
 	deliveredAt: true,
 	createdAt: true,
 	updatedAt: true,
@@ -144,6 +145,7 @@ export const clientOrderSelect = {
 	total: true,
 	notes: true,
 	estimatedDelivery: true,
+ confirmedAt: true, deliveryMinutes: true, paymentAdditionalValue: true, paymentFieldValues: true,
 	deliveredAt: true,
 	createdAt: true,
 	updatedAt: true,
@@ -193,6 +195,7 @@ export interface ClientOrderRepository {
 	createClientOrder(input: {
 		addressId: string | null;
 		deliveryFee: number;
+ deliveryMinutes?: number; paymentAdditionalValue?: number; paymentFieldValues?: Prisma.InputJsonValue;
  deliveryAreaId?: string; deliveryAreaSnapshot?: Prisma.InputJsonValue;
 		discount: number;
 		items: Prisma.OrderItemCreateManyOrderInput[];
@@ -208,7 +211,7 @@ export interface ClientOrderRepository {
 		userId: string;
 	}): Promise<ClientOrderRecord>;
 	findActivePaymentMethodForUser(id: string, userId: string): Promise<{ id: string } | null>;
-	findActiveStorePaymentMethod(id: string, storeId: string): Promise<{ id: string; type: PaymentType } | null>;
+	findActiveStorePaymentMethod(id: string, storeId: string): Promise<{ id: string; type: PaymentType; fields?: Prisma.JsonValue } | null>;
 	findActiveProductsByIds(
 		ids: string[],
 		storeId: string
@@ -268,7 +271,7 @@ export class PrismaAdminOrderRepository implements AdminOrderRepository {
 	async updateStatus(id: string, status: OrderStatus) {
 		const existingOrder = await this.database.order.findUnique({
 			where: { id },
-			select: { id: true },
+			select: { id: true, confirmedAt: true, deliveryMinutes: true, estimatedDelivery: true },
 		});
 
 		if (!existingOrder) {
@@ -278,6 +281,11 @@ export class PrismaAdminOrderRepository implements AdminOrderRepository {
 		return this.database.order.update({
 			where: { id },
 			data: {
+				...(status === OrderStatus.CONFIRMED && !existingOrder.confirmedAt && {
+					confirmedAt: new Date(),
+					estimatedDelivery: existingOrder.deliveryMinutes && existingOrder.deliveryMinutes > 0
+						? new Date(Date.now() + existingOrder.deliveryMinutes * 60000) : existingOrder.estimatedDelivery,
+				}),
 				deliveredAt: status === OrderStatus.DELIVERED ? new Date() : null,
 				status,
 			},
@@ -292,6 +300,7 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 	async createClientOrder(input: {
 		addressId: string | null;
 		deliveryFee: number;
+ deliveryMinutes?: number; paymentAdditionalValue?: number; paymentFieldValues?: Prisma.InputJsonValue;
  deliveryAreaId?: string; deliveryAreaSnapshot?: Prisma.InputJsonValue;
 		discount: number;
 		items: Prisma.OrderItemCreateManyOrderInput[];
@@ -310,6 +319,7 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 			data: {
 				addressId: input.addressId,
 				deliveryFee: input.deliveryFee,
+ deliveryMinutes: input.deliveryMinutes, paymentAdditionalValue: input.paymentAdditionalValue, paymentFieldValues: input.paymentFieldValues,
  deliveryAreaId: input.deliveryAreaId, deliveryAreaSnapshot: input.deliveryAreaSnapshot,
 				discount: input.discount,
 				items: {
@@ -342,8 +352,8 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 	async findActiveStorePaymentMethod(id: string, storeId: string) {
 		return this.database.storePaymentMethod.findFirst({
 			where: { id, isActive: true, storeId },
-			select: { id: true, type: true },
-		}) as Promise<{ id: string; type: PaymentType } | null>;
+			select: { id: true, type: true, fields: true },
+		}) as Promise<{ id: string; type: PaymentType; fields?: Prisma.JsonValue } | null>;
 	}
 
 	async findActiveProductsByIds(ids: string[], storeId: string) {

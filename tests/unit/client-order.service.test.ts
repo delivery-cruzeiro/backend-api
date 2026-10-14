@@ -125,6 +125,19 @@ describe('ClientOrderService', () => {
 		expect(repository.createClientOrder).not.toHaveBeenCalled();
 	});
 
+	it('cobra os campos do pagamento uma vez por pedido usando o cadastro', async () => {
+		vi.mocked(repository.findActiveStoreById).mockResolvedValue({ addressId: 'store-address-1', id: 'store-1' });
+		vi.mocked(repository.findActiveStorePaymentMethod).mockResolvedValue({ id: 'custom-1', type: PaymentType.CUSTOM, fields: [{ id: 'fee', label: 'Parcelamento', type: 'CHECKBOX', additionalValue: 3.5, options: [] }] });
+		vi.mocked(repository.findActiveProductsByIds).mockResolvedValue([{ id: 'product-1', price: 10 }] as never);
+		const service = new ClientOrderService(repository, orderEvents);
+		const result = await service.prepareOrder('user-1', {
+			storeId: 'store-1', storePaymentMethodId: 'custom-1', paymentType: PaymentType.CUSTOM,
+			items: [{ productId: 'product-1', quantity: 2 }],
+			paymentFieldValues: [{ fieldId: 'fee', label: 'Adulterado', type: 'CHECKBOX' as never, value: true, additionalValue: 0 }],
+		});
+		expect(result).toMatchObject({ success: true, data: { subtotal: 20, paymentAdditionalValue: 3.5, total: 23.5, paymentFieldValues: [{ label: 'Parcelamento', additionalValue: 3.5 }] } });
+	});
+
 	it('cria pedido e emite evento websocket para atendentes', async () => {
 		vi.mocked(repository.findActiveProductsByIds).mockResolvedValue([
 			{

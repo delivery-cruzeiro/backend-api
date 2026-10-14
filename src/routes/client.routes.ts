@@ -9,6 +9,7 @@ import {
 	getClientAddresses,
 	getClientAddressByZipCode,
 	getClientOrderById,
+	getClientOrderContact,
 	getClientOrders,
 	getClientPaymentMethods,
 	getClientProfile,
@@ -60,5 +61,6 @@ export async function clientRoutes(fastify: FastifyInstance) {
 	fastify.get('/client/orders', getClientOrdersHandler);
 	fastify.post('/client/orders', createClientOrderHandler);
 	fastify.get('/client/orders/:id', getClientOrderByIdHandler);
+	fastify.get('/client/orders/:id/contact', getClientOrderContact as unknown as RouteHandlerMethod);
 }
 

@@ -19,6 +19,7 @@ const carouselContentSchema = {
 	type: 'object',
 	required: ['durationSeconds', 'transition', 'slides'],
 	properties: {
+		size: { type: 'string', enum: ['SMALL', 'MEDIUM', 'LARGE'] },
 		durationSeconds: { type: 'number' },
 		transition: { type: 'string', enum: ['FADE', 'SLIDE', 'ZOOM', 'NONE'] },
 		slides: {

@@ -13,6 +13,7 @@ export function serializeAdminOrder(order: AdminOrderRecord): AdminOrder {
 	return {
 		...order,
 		deliveryFee: Number(order.deliveryFee),
+ paymentAdditionalValue: Number(order.paymentAdditionalValue ?? 0),
 		discount: Number(order.discount),
 		items: order.items.map(item => ({
 			...item,
@@ -39,6 +40,7 @@ export function serializeClientOrder(order: ClientOrderRecord) {
 	return {
 		...order,
 		deliveryFee: Number(order.deliveryFee),
+ paymentAdditionalValue: Number(order.paymentAdditionalValue ?? 0),
 		discount: Number(order.discount),
 		items: order.items.map(item => ({
 			...item,
