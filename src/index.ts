@@ -10,6 +10,7 @@ import { assertDatabaseSecurity } from './lib/prisma.js';
 import { orderEventsEmitter } from './events/order-events.emitter.js';
 import { SocketGateway } from './gateways/socket.gateway.js';
 import { appConfigRoutes } from './routes/app-config.routes.js';
+import { deploymentReleaseRoutes } from './routes/deployment-release.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { badgeRoutes } from './routes/badge.routes.js';
 import { categoryRoutes } from './routes/category.routes.js';
@@ -139,6 +140,7 @@ const startServer = async () => {
 		await fastify.register(authRoutes, { prefix: '/api' });
 		await fastify.register(badgeRoutes, { prefix: '/api' });
 		await fastify.register(appConfigRoutes, { prefix: '/api' });
+		await fastify.register(deploymentReleaseRoutes, { prefix: '/api' });
 		await fastify.register(categoryRoutes, { prefix: '/api' });
 		await fastify.register(carouselRoutes, { prefix: '/api' });
 		await fastify.register(clientRoutes, { prefix: '/api' });

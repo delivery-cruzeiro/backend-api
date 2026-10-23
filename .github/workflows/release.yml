@@ -42,6 +42,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
           echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Registry login
         if: env.PUBLISH_IMAGE == 'true'
         uses: docker/login-action@v3
@@ -54,9 +55,30 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: ${{ env.PUBLISH_IMAGE == 'true' }}
-          tags: ${{ steps.release.outputs.image }}:${{ steps.release.outputs.image_tag }}
+          tags: |
+            ${{ steps.release.outputs.image }}:${{ steps.release.outputs.image_tag }}
+            ${{ steps.release.outputs.image }}:sha-${{ steps.release.outputs.commit_sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Register published version in Infra
+        if: env.PUBLISH_IMAGE == 'true'
+        uses: actions/github-script@v7
+        env:
+          RELEASE_TOKEN_CONFIGURED: ${{ secrets.INFRA_RELEASE_TOKEN != '' }}
+        with:
+          github-token: ${{ secrets.INFRA_RELEASE_TOKEN || github.token }}
+          script: |
+            if (process.env.RELEASE_TOKEN_CONFIGURED !== 'true') {
+              core.warning('Configure INFRA_RELEASE_TOKEN (Contents write on Infra) to register published versions.');
+              return;
+            }
+            const {execFileSync} = require('node:child_process');
+            const ref = execFileSync('git', ['rev-parse', 'HEAD'], {encoding:'utf8'}).trim();
+            const title = execFileSync('git', ['log', '-1', '--format=%s'], {encoding:'utf8'}).trim().slice(0, 300);
+            await github.rest.repos.createDispatchEvent({
+              owner: 'delivery-cruzeiro', repo: 'Infra', event_type: 'component_published',
+              client_payload: {repository: context.repo.repo, ref, title, sequence: context.runNumber},
+            });
       - name: Publish release notes
         if: env.PUBLISH_RELEASE == 'true'
         env:
