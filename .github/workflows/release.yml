@@ -7,7 +7,7 @@ on:
         required: true
         type: string
   push:
-    branches: [main]
+    branches: [main, codex/render-upload-multioptions]
     tags: ['v*']
   pull_request:
 permissions:
@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RELEASE_REF: ${{ inputs.release_tag || github.ref_name }}
-      PUBLISH_IMAGE: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+      PUBLISH_IMAGE: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/render-upload-multioptions')) }}
       PUBLISH_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
     permissions:
       contents: write

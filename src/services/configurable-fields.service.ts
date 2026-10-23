@@ -1,4 +1,4 @@
-import { ProductAdditionalFieldType, productAdditionalFieldSchema, type ProductAdditionalFieldDTO, type ProductAdditionalFieldValueDTO } from '@delivery-cruzeiro/types';
+import { ProductAdditionalFieldType, productAdditionalFieldSchema, resolveAdditionalFieldSelection, type ProductAdditionalFieldDTO, type ProductAdditionalFieldValueDTO } from '@delivery-cruzeiro/types';
 
 function formatAdditionalValue(value: number) {
 	return value.toLocaleString('pt-BR', { currency: 'BRL', style: 'currency' });
@@ -44,26 +44,22 @@ export function resolveAdditionalFields(
 			return { error: 'Campo adicional do produto nao encontrado', success: false };
 		}
 
-		const value = selectedValue.value;
-		const isValidValue =
-			configuredField.type === ProductAdditionalFieldType.CHECKBOX
-				? value === true
-				: typeof value === 'string' &&
-					value.trim().length > 0 &&
-					(configuredField.type === ProductAdditionalFieldType.TEXT ||
-						configuredField.options.includes(value));
-
-		if (!isValidValue) {
-			return { error: 'Valor de campo adicional do produto invalido', success: false };
-		}
+		const selection = resolveAdditionalFieldSelection(configuredField,selectedValue.value);
+		if (!selection.success) return selection;
+		if (!selection.selected) continue;
 
 		normalizedValues.push({
-			additionalValue: configuredField.additionalValue,
+			additionalValue: selection.additionalValue,
 			fieldId: configuredField.id,
 			label: configuredField.label,
 			type: configuredField.type,
-			value,
+			value: selection.value,
 		});
+	}
+	for (const field of configuredFieldsList) {
+		if (selectedIds.has(field.id)) continue;
+		const selection = resolveAdditionalFieldSelection(field,undefined);
+		if (!selection.success) return selection;
 	}
 
 	const additionalValue = normalizedValues.reduce(
@@ -75,7 +71,7 @@ export function resolveAdditionalFields(
 			const displayedValue =
 				field.type === ProductAdditionalFieldType.CHECKBOX
 					? field.label
-					: `${field.label}: ${field.value}`;
+					: `${field.label}: ${Array.isArray(field.value) ? field.value.map(option=>`${option.label} × ${option.quantity}`).join(', ') : field.value}`;
 			const price = Number(field.additionalValue ?? 0);
 			return price > 0
 				? `${displayedValue} (+${formatAdditionalValue(price)})`
