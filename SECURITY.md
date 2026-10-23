@@ -8,6 +8,8 @@ Requests autenticados devem passar por authenticate/guards antes de consultas pr
 
 Não adicione senhas, tokens, chaves ou certificados ao Git. Certificados são provisionados em /run/secrets, nunca procurados nas fontes. Uma credencial que já foi publicada precisa ser revogada, além da limpeza do histórico.
 
+Certificados A1 PKCS#12 são abertos pelo OpenSSL instalado nas imagens de build e produção. O bundle e a senha são enviados por pipes separados, sem shell ou arquivos temporários; a validação MAC permanece habilitada. A extração aceita criptografia moderna e legada e seleciona o certificado que corresponde à chave privada. A assinatura XML continua usando xml-crypto e a criptografia nativa do Node. node-forge foi removido porque o alerta GHSA-86w9-cpqp-85rv não possui versão corrigida; a aplicação não usava sua rotina de verificação RSA afetada.
+
 Para atualização de dados, HTTPS, configuração fiscal e a matriz dos 20 controles, consulte [a documentação do Infra](https://github.com/delivery-cruzeiro/Infra/blob/main/SECURITY.md).
 
 Validação: `docker build --target verification .`. O script `scripts/security-smoke.mjs` é destinado exclusivamente a um banco descartável; cria contas sintéticas e verifica os limites HTTP, RLS, sessões e criptografia contra a aplicação em execução. Os scripts de backfill e migration não devem ser executados sem backup.

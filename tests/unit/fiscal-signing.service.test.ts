@@ -1,5 +1,9 @@
 import { DOMParser } from '@xmldom/xmldom';
-import forge from 'node-forge';
+import { execFileSync } from 'node:child_process';
+import { createPrivateKey, X509Certificate } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SignedXml } from 'xml-crypto';
 import { CertificateService } from '../../src/services/fiscal/shared/signing/certificate.service.js';
@@ -10,29 +14,43 @@ import { SignXmlService } from '../../src/services/fiscal/shared/signing/sign-xm
 const CERTIFICATE_PASSWORD = 'senha-teste';
 const FISCAL_ID = 'NFe25260512345678000199650090000000011000182730';
 
-function createTestCertificateBuffer() {
-	const keys = forge.pki.rsa.generateKeyPair(1024);
-	const certificate = forge.pki.createCertificate();
-
-	certificate.publicKey = keys.publicKey;
-	certificate.serialNumber = '01';
-	certificate.validity.notBefore = new Date('2026-01-01T00:00:00.000Z');
-	certificate.validity.notAfter = new Date('2027-01-01T00:00:00.000Z');
-	certificate.setSubject([{ name: 'commonName', value: 'Delivery Cruzeiro Teste' }]);
-	certificate.setIssuer([{ name: 'commonName', value: 'Delivery Cruzeiro Teste' }]);
-	certificate.sign(keys.privateKey, forge.md.sha256.create());
-
-	const p12Asn1 = forge.pkcs12.toPkcs12Asn1(
-		keys.privateKey,
-		[certificate],
-		CERTIFICATE_PASSWORD,
-		{
-			algorithm: '3des',
-		}
-	);
-	const p12Der = forge.asn1.toDer(p12Asn1).getBytes();
-
-	return Buffer.from(p12Der, 'binary');
+function createTestCertificateBuffer(legacy = false, withoutKey = false) {
+	const directory = mkdtempSync(join(tmpdir(), 'fiscal-certificate-test-'));
+	const keyPath = join(directory, 'key.pem');
+	const certPath = join(directory, 'cert.pem');
+	try {
+		execFileSync(
+			'openssl',
+			[
+				'req',
+				'-x509',
+				'-newkey',
+				'rsa:2048',
+				'-noenc',
+				'-days',
+				'2',
+				'-subj',
+				'/CN=Delivery Cruzeiro Teste',
+				'-keyout',
+				keyPath,
+				'-out',
+				certPath,
+			],
+			{ stdio: 'ignore' }
+		);
+		return execFileSync('openssl', [
+			'pkcs12',
+			'-export',
+			...(legacy ? ['-legacy'] : []),
+			...(withoutKey ? ['-nokeys'] : ['-inkey', keyPath]),
+			'-in',
+			certPath,
+			'-passout',
+			`pass:${CERTIFICATE_PASSWORD}`,
+		]);
+	} finally {
+		rmSync(directory, { recursive: true, force: true });
+	}
 }
 
 function createFiscalXml() {
@@ -40,6 +58,76 @@ function createFiscalXml() {
 }
 
 describe('CertificateService', () => {
+	it('carrega A1 legado com RC2 e encontra o certificado correspondente a chave', async () => {
+		const loaded = await new CertificateService().load({
+			certificateBuffer: createTestCertificateBuffer(true),
+			certificatePassword: CERTIFICATE_PASSWORD,
+		});
+		expect(
+			new X509Certificate(loaded.certificatePem).checkPrivateKey(
+				createPrivateKey(loaded.privateKeyPem)
+			)
+		).toBe(true);
+	});
+
+	it('carrega A1 de arquivo montado sem alterar sua origem', async () => {
+		const directory = mkdtempSync(join(tmpdir(), 'fiscal-certificate-file-test-'));
+		const certificatePath = join(directory, 'a1.pfx');
+		try {
+			writeFileSync(certificatePath, createTestCertificateBuffer(), { mode: 0o600 });
+			const before = readFileSync(certificatePath);
+			const loaded = await new CertificateService().load({
+				certificatePath,
+				certificatePassword: CERTIFICATE_PASSWORD,
+			});
+			expect(loaded.source).toBe('file');
+			expect(readFileSync(certificatePath)).toEqual(before);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	it('rejeita senha incorreta sem expor senha ou diagnostico OpenSSL', async () => {
+		await expect(
+			new CertificateService().load({
+				certificateBuffer: createTestCertificateBuffer(),
+				certificatePassword: 'wrong-password',
+			})
+		).rejects.toThrow(
+			'Nao foi possivel abrir o certificado digital A1. Confira o arquivo e a senha.'
+		);
+	});
+
+	it('rejeita dados malformados e bundle adulterado sem desativar validacao MAC', async () => {
+		const service = new CertificateService();
+		await expect(
+			service.load({ certificateBuffer: Buffer.from('not a certificate') })
+		).rejects.toThrow('Nao foi possivel abrir');
+		const corrupted = createTestCertificateBuffer();
+		corrupted[corrupted.length - 1] ^= 1;
+		await expect(
+			service.load({
+				certificateBuffer: corrupted,
+				certificatePassword: CERTIFICATE_PASSWORD,
+			})
+		).rejects.toThrow('Nao foi possivel abrir');
+	});
+
+	it('rejeita PFX sem chave privada e senha com quebra de linha', async () => {
+		const service = new CertificateService();
+		await expect(
+			service.load({
+				certificateBuffer: createTestCertificateBuffer(false, true),
+				certificatePassword: CERTIFICATE_PASSWORD,
+			})
+		).rejects.toThrow('Chave privada nao encontrada');
+		await expect(
+			service.load({
+				certificateBuffer: Buffer.from('invalid'),
+				certificatePassword: 'first\nsecond',
+			})
+		).rejects.toThrow('caracteres invalidos');
+	});
 	it('carrega certificado A1 em memoria e extrai chave privada e certificado publico', async () => {
 		const service = new CertificateService();
 
