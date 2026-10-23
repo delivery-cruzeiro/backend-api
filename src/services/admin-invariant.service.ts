@@ -100,7 +100,7 @@ export async function ensureDefaultAdminInvariant() {
 					emailVerified: true,
 					isActive: true,
 					name: DEFAULT_ADMIN_NAME,
-					role: UserRole.ADMIN,
+					role: UserRole.SUPER_ADMIN,
 				},
 				select: {
 					id: true,
@@ -112,7 +112,7 @@ export async function ensureDefaultAdminInvariant() {
 					emailVerified: true,
 					isActive: true,
 					name: DEFAULT_ADMIN_NAME,
-					role: UserRole.ADMIN,
+					role: UserRole.SUPER_ADMIN,
 				},
 				select: {
 					id: true,

@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM node:22.22.0-alpine AS dependencies
 WORKDIR /app
+RUN apk add --no-cache openssl
 RUN npm install -g pnpm@11.24.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY vendor/ ./vendor/
@@ -15,6 +16,7 @@ RUN pnpm build
 FROM node:22.22.0-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=4000
+RUN apk add --no-cache openssl
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/prisma ./prisma

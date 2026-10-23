@@ -41,6 +41,7 @@ const productSelect = {
 	name: true,
 	description: true,
 	price: true,
+	pricingMode: true,
 	imageUrl: true,
 	additionalFields: true,
 	unavailable: true,
@@ -154,6 +155,7 @@ function normalizeProductInput(fields: Record<string, unknown>) {
 		...(fields.name !== undefined && { name: fields.name }),
 		...(fields.order !== undefined && { order: parseNumberField(fields.order) }),
 		...(fields.price !== undefined && { price: parseNumberField(fields.price) }),
+		...(fields.pricingMode !== undefined && { pricingMode: fields.pricingMode }),
 		...(fields.storeIds !== undefined && {
 			storeIds: parseStringArrayField(fields.storeIds),
 		}),
@@ -219,6 +221,7 @@ type ProductWithBadges = {
 	category: { additionalFields: unknown; id: string; name: string };
 	id: string;
 	price: unknown;
+	pricingMode: string;
 	subcategory: { additionalFields: unknown; id: string; name: string } | null;
 	[key: string]: unknown;
 };
@@ -236,6 +239,7 @@ function serializeProduct(product: ProductWithBadges, storeId?: string) {
 			.map(item => item.badge)
 			.filter(badge => !storeId || badge.storeId === storeId),
 		price: Number(product.price),
+		pricingMode: product.pricingMode,
 	};
 }
 
@@ -306,6 +310,7 @@ export const createProduct = async (
 			name,
 			order = 0,
 			price,
+			pricingMode,
 			storeIds,
 			subcategoryId,
 			additionalFields = [],
@@ -372,6 +377,7 @@ export const createProduct = async (
 				name,
 				order,
 				price,
+				pricingMode,
 				subcategoryId,
 				stores: buildStoreConnect(storeIds),
 			},

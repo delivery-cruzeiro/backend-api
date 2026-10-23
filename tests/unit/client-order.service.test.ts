@@ -89,6 +89,33 @@ describe('ClientOrderService', () => {
 		};
 	});
 
+	it.each([['ADDITIVE', 15, 15], ['ADDITIVE', 10, 10], ['FIXED', 15, 25]])('calculates %s prices using authoritative additions %s', async (pricingMode, addition, expected) => {
+		vi.mocked(repository.findActiveStoreById).mockResolvedValue({ addressId: 'address-1', id: 'store-1' });
+		vi.mocked(repository.findActiveProductsByIds).mockResolvedValue([{
+			id: 'product-1', price: 10, pricingMode,
+			additionalFields: [], category: { id: 'category-1', additionalFields: [{ id: 'extra', label: 'Extra', type: 'CHECKBOX', options: [], additionalValue: addition }] }, subcategory: null,
+		}]);
+		const result = await new ClientOrderService(repository, orderEvents).prepareOrder('user-1', {
+			storeId: 'store-1', paymentType: PaymentType.CASH,
+			items: [{ productId: 'product-1', quantity: 3, additionalFieldValues: [{ fieldId: 'category:category-1:extra', label: 'Fake', type: 'CHECKBOX' as never, value: true, additionalValue: 999 }] }],
+		});
+		expect(result).toMatchObject({ success: true, data: { subtotal: expected * 3, items: [{ price: expected, quantity: 3 }] } });
+	});
+
+	it('rejects an additive unit below minimum even when quantity and forged prices exceed it', async () => {
+		vi.mocked(repository.findActiveStoreById).mockResolvedValue({ addressId: 'address-1', id: 'store-1' });
+		vi.mocked(repository.findActiveProductsByIds).mockResolvedValue([{
+			id: 'product-1', price: 10, pricingMode: 'ADDITIVE',
+			additionalFields: [{ id: 'extra', label: 'Extra', type: 'CHECKBOX', options: [], additionalValue: 9.99 }], category: { id: 'category-1', additionalFields: [] }, subcategory: null,
+		}]);
+		const result = await new ClientOrderService(repository, orderEvents).prepareOrder('user-1', {
+			storeId: 'store-1', paymentType: PaymentType.CASH,
+			items: [{ productId: 'product-1', quantity: 10, additionalFieldValues: [{ fieldId: 'extra', label: 'Fake', type: 'CHECKBOX' as never, value: true, additionalValue: 999 }] }],
+		});
+		expect(result).toMatchObject({ success: false, statusCode: 400, error: expect.stringContaining('Faltou preencher') });
+		expect(repository.createClientOrder).not.toHaveBeenCalled();
+	});
+
 	it('aceita somente uma forma de pagamento ativa da loja e persiste a referencia', async () => {
 		vi.mocked(repository.findActiveStoreById).mockResolvedValue({ addressId: 'store-address-1', id: 'store-1' });
 		vi.mocked(repository.findActiveStorePaymentMethod).mockResolvedValue({ id: 'store-payment-1', type: PaymentType.PIX });

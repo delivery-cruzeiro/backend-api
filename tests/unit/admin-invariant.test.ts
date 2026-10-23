@@ -33,7 +33,7 @@ describe('ensureDefaultAdminInvariant', () => {
 		vi.clearAllMocks();
 	});
 
-	it('cria o admin padrao ativo quando nao existe administrador ativo', async () => {
+	it('cria o super admin padrao ativo quando nao existe administrador ativo', async () => {
 		(prisma.user.findMany as any).mockResolvedValue([]);
 		(prisma.user.findUnique as any).mockResolvedValue(null);
 		(prisma.user.create as any).mockResolvedValue({ id: 'default-admin-id' });
@@ -47,7 +47,7 @@ describe('ensureDefaultAdminInvariant', () => {
 				emailVerified: true,
 				isActive: true,
 				name: DEFAULT_ADMIN_NAME,
-				role: UserRole.ADMIN,
+				role: UserRole.SUPER_ADMIN,
 			},
 			select: {
 				id: true,
@@ -63,7 +63,7 @@ describe('ensureDefaultAdminInvariant', () => {
 		});
 	});
 
-	it('reativa o admin padrao quando ele e o unico administrador disponivel', async () => {
+	it('recupera o admin padrao como super admin quando ele e o unico administrador disponivel', async () => {
 		(prisma.user.findMany as any).mockResolvedValue([]);
 		(prisma.user.findUnique as any).mockResolvedValue({
 			id: 'default-admin-id',
@@ -82,7 +82,7 @@ describe('ensureDefaultAdminInvariant', () => {
 				emailVerified: true,
 				isActive: true,
 				name: DEFAULT_ADMIN_NAME,
-				role: UserRole.ADMIN,
+				role: UserRole.SUPER_ADMIN,
 			},
 			select: {
 				id: true,
@@ -98,6 +98,21 @@ describe('ensureDefaultAdminInvariant', () => {
 				password: `hashed:${DEFAULT_ADMIN_PASSWORD}`,
 			},
 		});
+	});
+
+	it('preserva a credencial existente ao garantir o nivel de super admin', async () => {
+		(prisma.user.findMany as any).mockResolvedValue([]);
+		(prisma.user.findUnique as any).mockResolvedValue({id:'default-admin-id',isActive:true});
+		(prisma.user.update as any).mockResolvedValue({id:'default-admin-id'});
+		(prisma.account.findFirst as any).mockResolvedValue({id:'credential-id',password:'existing-hash'});
+
+		await ensureDefaultAdminInvariant();
+
+		expect(prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({
+			data: expect.objectContaining({role:UserRole.SUPER_ADMIN,isActive:true}),
+		}));
+		expect(prisma.account.create).not.toHaveBeenCalled();
+		expect(prisma.account.updateMany).not.toHaveBeenCalled();
 	});
 
 	it('desativa o admin padrao quando existe outro administrador ativo', async () => {

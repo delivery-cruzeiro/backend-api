@@ -27,8 +27,17 @@ const additionalFieldSchema = {
 		additionalValue: { type: 'number', minimum: 0, maximum: 999.99 },
 		id: { type: 'string' },
 		label: { type: 'string' },
+		required: { type: 'boolean', default: false },
+		minQuantity: { type: 'integer', minimum: 0, maximum: 999 },
+		maxQuantity: { type: 'integer', minimum: 0, maximum: 999 },
+		quantityOptions: { type: 'array', items: { type: 'object', properties: {
+			id: { type: 'string' }, label: { type: 'string' },
+			additionalValue: { type: 'number', minimum: 0, maximum: 999.99 },
+			minQuantity: { type: 'integer', minimum: 0, maximum: 999 },
+			maxQuantity: { type: 'integer', minimum: 0, maximum: 999 },
+		} } },
 		options: { type: 'array', items: { type: 'string' } },
-		type: { type: 'string', enum: ['COMBOBOX', 'CHECKBOX', 'TEXT', 'RADIO'] },
+		type: { type: 'string', enum: ['COMBOBOX', 'CHECKBOX', 'TEXT', 'RADIO', 'MULTI_OPTION'] },
 	},
 };
 

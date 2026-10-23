@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises';
-import forge from 'node-forge';
+import { spawn } from 'node:child_process';
+import { createPrivateKey, X509Certificate } from 'node:crypto';
+import type { Writable } from 'node:stream';
 
 export const DEFAULT_DIGITAL_CERTIFICATES_DIRECTORY = '/run/secrets';
 
@@ -21,12 +23,23 @@ export class CertificateService {
 		const certificateBuffer =
 			input.certificateBuffer ?? (await this.readCertificateFile(input));
 		const password = input.certificatePassword ?? process.env.CERTIFICATE_PASSWORD ?? '';
-		const p12Asn1 = forge.asn1.fromDer(certificateBuffer.toString('binary'));
-		const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, password);
-		const privateKey = this.findPrivateKey(p12);
-		const certificate = this.findCertificate(p12);
-		const privateKeyPem = forge.pki.privateKeyToPem(privateKey);
-		const certificatePem = forge.pki.certificateToPem(certificate);
+		const pem = await extractPkcs12(certificateBuffer, password);
+		const keyPem = pem.match(
+			/-----BEGIN (?:RSA )?PRIVATE KEY-----[\s\S]+?-----END (?:RSA )?PRIVATE KEY-----/
+		)?.[0];
+		if (!keyPem) throw new Error('Chave privada nao encontrada no certificado digital A1');
+		const privateKey = createPrivateKey(keyPem);
+		const certificate = (
+			pem.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) ?? []
+		)
+			.map(value => new X509Certificate(value))
+			.find(value => value.checkPrivateKey(privateKey));
+		if (!certificate)
+			throw new Error(
+				'Certificado publico correspondente a chave privada nao encontrado no arquivo A1'
+			);
+		const privateKeyPem = privateKey.export({ type: 'pkcs1', format: 'pem' }).toString();
+		const certificatePem = certificate.toString();
 
 		return {
 			certificateBase64: normalizeCertificateBase64(certificatePem),
@@ -45,36 +58,48 @@ export class CertificateService {
 
 		throw new Error('Configure CERTIFICATE_PATH with a mounted private certificate');
 	}
+}
 
-	private findPrivateKey(p12: forge.pkcs12.Pkcs12Pfx) {
-		const keyBag =
-			this.findBagWithPrivateKey(p12, forge.pki.oids.pkcs8ShroudedKeyBag) ??
-			this.findBagWithPrivateKey(p12, forge.pki.oids.keyBag);
-
-		if (!keyBag?.key) {
-			throw new Error('Chave privada nao encontrada no certificado digital A1');
-		}
-
-		return keyBag.key;
-	}
-
-	private findCertificate(p12: forge.pkcs12.Pkcs12Pfx) {
-		const certBag = this.findBagWithCertificate(p12, forge.pki.oids.certBag);
-
-		if (!certBag?.cert) {
-			throw new Error('Certificado publico nao encontrado no arquivo A1');
-		}
-
-		return certBag.cert;
-	}
-
-	private findBagWithPrivateKey(p12: forge.pkcs12.Pkcs12Pfx, bagType: string) {
-		return p12.getBags({ bagType })[bagType]?.find(bag => Boolean(bag.key));
-	}
-
-	private findBagWithCertificate(p12: forge.pkcs12.Pkcs12Pfx, bagType: string) {
-		return p12.getBags({ bagType })[bagType]?.find(bag => Boolean(bag.cert));
-	}
+function extractPkcs12(buffer: Buffer, password: string): Promise<string> {
+	// OpenSSL password descriptors are line based. Never silently truncate a password.
+	if (/[\r\n\0]/.test(password))
+		throw new Error('Senha do certificado A1 contem caracteres invalidos');
+	return new Promise((resolve, reject) => {
+		const child = spawn('openssl', ['pkcs12', '-legacy', '-noenc', '-passin', 'fd:3'], {
+			stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
+			shell: false,
+			windowsHide: true,
+			timeout: 10_000,
+		});
+		const chunks: Buffer[] = [];
+		let size = 0;
+		const failure = () =>
+			reject(
+				new Error(
+					'Nao foi possivel abrir o certificado digital A1. Confira o arquivo e a senha.'
+				)
+			);
+		child.on('error', failure);
+		child.stdout.on('data', (chunk: Buffer) => {
+			size += chunk.length;
+			if (size > 16 * 1024 * 1024) {
+				child.kill();
+				failure();
+				return;
+			}
+			chunks.push(chunk);
+		});
+		// Diagnostics can contain certificate metadata: drain them without logging or retaining them.
+		child.stderr.resume();
+		child.on('close', code =>
+			code === 0 ? resolve(Buffer.concat(chunks).toString('utf8')) : failure()
+		);
+		const passwordPipe = child.stdio[3] as Writable;
+		passwordPipe.on('error', failure);
+		child.stdin.on('error', failure);
+		passwordPipe.end(password + '\n');
+		child.stdin.end(buffer);
+	});
 }
 
 function normalizeCertificateBase64(certificatePem: string) {

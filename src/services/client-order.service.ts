@@ -1,6 +1,7 @@
 import { resolveAdditionalFields } from './configurable-fields.service.js';
 import {
 	OrderStatus,
+	calculateProductPrice,
 	PaymentType,
 	type ClientOrderDTO,
 } from '@delivery-cruzeiro/types';
@@ -160,7 +161,11 @@ export class ClientOrderService {
 				};
 			}
 
-			const price = Number(product?.price ?? 0) + additionalFields.additionalValue;
+			const calculated = calculateProductPrice(Number(product?.price ?? 0), additionalFields.additionalValue, product?.pricingMode);
+			if (!calculated.meetsMinimum) {
+				return { error: 'Faltou preencher algum campo adicional do produto. Complete a seleção para atingir o valor mínimo.', statusCode: 400, success: false };
+			}
+			const price = calculated.unitPrice;
 			const itemNotes = [item.notes?.trim(), additionalFields.notes]
 				.filter(Boolean)
 				.join('\n');

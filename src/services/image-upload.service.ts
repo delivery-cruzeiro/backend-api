@@ -9,16 +9,19 @@ export type UploadImageInput = {
 
 function configureCloudinary() {
 	if (process.env.CLOUDINARY_URL) {
+		// dotenv can run after the SDK was imported. Reload its environment config.
+		cloudinary.config(true);
 		cloudinary.config({ secure: true });
-		return;
-	}
-
-	cloudinary.config({
+	} else cloudinary.config({
 		api_key: process.env.CLOUDINARY_API_KEY,
 		api_secret: process.env.CLOUDINARY_API_SECRET,
 		cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
 		secure: true,
 	});
+	const configuration = cloudinary.config();
+	if (!configuration.cloud_name || !configuration.api_key || !configuration.api_secret) {
+		throw new Error('IMAGE_STORAGE_NOT_CONFIGURED: configure CLOUDINARY_URL ou as credenciais CLOUDINARY_* no servidor');
+	}
 }
 
 function getImageUploadFolder() {
