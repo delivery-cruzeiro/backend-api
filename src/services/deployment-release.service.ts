@@ -223,7 +223,9 @@ export class DeploymentReleaseService {
 			})),
 		});
 		const commit = await this.github<{ sha: string }>('git/commits', 'POST', {
-			message: `deploy: select ${version} - ${release.title}`,
+			// Commit titles can contain provider control phrases such as [skip render].
+			// Keep the original title in the catalog/selection, outside the deploy message.
+			message: `deploy: select ${version}`,
 			tree: tree.sha,
 			parents: [revision],
 		});

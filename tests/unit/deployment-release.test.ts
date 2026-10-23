@@ -42,7 +42,7 @@ const names = [
 ];
 const release = {
 	version: 'v1.0.1',
-	title: 'feat: versions',
+	title: 'feat: versions [skip render]',
 	createdAt: '2026-10-23T16:00:00Z',
 	repositories: Object.fromEntries(
 		names.map(name => [name, { ref: 'b'.repeat(40), title: name }])
@@ -153,6 +153,12 @@ describe('immutable release selection', () => {
 			tree.tree.find((file: any) => file.path === 'render/selected-release.json').content
 		).toContain('admin-1');
 		expect(calls.at(-1)!.body).toEqual({ sha: 'new-commit', force: false });
+		expect(calls.find(item => item.path.endsWith('git/commits'))!.body.message).toBe(
+			'deploy: select v1.0.1'
+		);
+		expect(
+			tree.tree.find((file: any) => file.path === 'render/selected-release.json').content
+		).toContain('[skip render]');
 		expect(calls.find(item => item.path.endsWith('git/commits'))!.body.parents).toEqual([
 			revision,
 		]);
