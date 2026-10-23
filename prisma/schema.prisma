@@ -530,6 +530,7 @@ model Product {
   name             String
   description      String
   price            Decimal      @db.Decimal(10, 2)
+  pricingMode      String       @default("FIXED") @map("pricing_mode")
   imageUrl         String?
   additionalFields Json         @default("[]") @map("additional_fields")
   unavailable      Boolean      @default(false)

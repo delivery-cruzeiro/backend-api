@@ -16,6 +16,10 @@
     {
       "file": "delivery-cruzeiro-types-1.3.5.tgz",
       "sha256": "ad8fb4dc399e8ea6feafba5c97419445082654f277220d2c61b530225331fc3c"
+    },
+    {
+      "file": "delivery-cruzeiro-types-1.4.1.tgz",
+      "sha256": "8aec0207a9fb7b94ce00c8a784d12e04f5e07fbc109e31e5c3eee873cec8eb82"
     }
   ]
 }

@@ -221,6 +221,7 @@ export interface ClientOrderRepository {
 			category: { additionalFields: Prisma.JsonValue; id: string };
 			id: string;
 			price: unknown;
+			pricingMode?: string;
 			subcategory: { additionalFields: Prisma.JsonValue; id: string } | null;
 		}>
 	>;
@@ -369,6 +370,7 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 			},
 			select: {
 				additionalFields: true,
+				pricingMode: true,
 				category: { select: { additionalFields: true, id: true } },
 				id: true,
 				price: true,

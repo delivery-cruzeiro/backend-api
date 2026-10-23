@@ -77,6 +77,7 @@ const productResponseSchema = {
 		name: { type: 'string' },
 		description: { type: 'string' },
 		price: { type: 'number' },
+		pricingMode: { type: 'string', enum: ['FIXED', 'ADDITIVE'] },
 		imageUrl: { type: 'string', nullable: true },
 		additionalFields: {
 			type: 'array',
