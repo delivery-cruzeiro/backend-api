@@ -78,6 +78,7 @@ describe('AdminOrderService', () => {
 			emitOrderChanged: vi.fn(),
 		};
 		repository = {
+			findHistory: vi.fn(),
 			findById: vi.fn(),
 			findMany: vi.fn(),
 			updateStatus: vi.fn(),

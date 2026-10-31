@@ -1,4 +1,4 @@
-import { PrinterConnectionStatus } from '@delivery-cruzeiro/types';
+import { PrinterConnectionStatus, resolvePrinterReceiptLayout } from '@delivery-cruzeiro/types';
 import { describe, expect, it, vi } from 'vitest';
 import type {
 	PrinterConfigurationRecord,
@@ -34,6 +34,7 @@ function record(data: Partial<PrinterConfigurationRecord> = {}): PrinterConfigur
 		connectionStatus: PrinterConnectionStatus.CONNECTED,
 		isPrimary: false,
 		receiptSections: ['customer', 'address', 'payment', 'notes', 'totals'],
+		receiptLayout: null,
 		createdAt: new Date('2026-09-03T12:00:00Z'),
 		updatedAt: new Date('2026-09-03T12:00:00Z'),
 		categories: [],
@@ -61,6 +62,18 @@ function repository(overrides: Partial<PrinterConfigurationRepository> = {}) {
 const actor = { id: 'user-1', role: 'ADMIN' };
 
 describe('PrinterConfigurationService', () => {
+	it('saves layout and assignments together and keeps explicit disabled groups', async () => {
+		const repo = repository();
+		const layout = resolvePrinterReceiptLayout({});
+		await new PrinterConfigurationService(repo).setAssignments('printer-1', { categoryIds: ['food'], subcategoryIds: [], receiptSections: [], receiptLayout: layout }, actor);
+		expect(repo.setAssignments).toHaveBeenCalledWith('printer-1', expect.objectContaining({ receiptLayout: expect.objectContaining({ categoriesEnabled: false }), categoryIds: ['food'] }));
+	});
+	it('keeps legacy assignment calls effective without clearing stored formatting', async () => {
+		const layout = { ...resolvePrinterReceiptLayout({}), feedLines: 9 };
+		const repo = repository({ findById: vi.fn().mockResolvedValue(record({ receiptLayout: layout })) });
+		await new PrinterConfigurationService(repo).setAssignments('printer-1', { categoryIds: ['food'], subcategoryIds: [], receiptSections: [] }, actor);
+		expect(repo.setAssignments).toHaveBeenCalledWith('printer-1', expect.objectContaining({ receiptLayout: expect.objectContaining({ categoriesEnabled: true, orderDataEnabled: false, feedLines: 9 }) }));
+	});
 	it('define automaticamente a primeira impressora da loja como principal', async () => {
 		const repo = repository();
 		const service = new PrinterConfigurationService(repo);

@@ -3,10 +3,12 @@ import type {
 	SetPrinterAssignmentsDTO,
 	UpdatePrinterConfigurationDTO,
 } from '@delivery-cruzeiro/types';
+import { resolvePrinterReceiptLayout } from '@delivery-cruzeiro/types';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 
 export const printerConfigurationSelect = {
+	receiptLayout: true,
 	receiptSections: true,
 	transport: true,
 	windowsQueueId: true,
@@ -73,6 +75,8 @@ export class PrismaPrinterConfigurationRepository implements PrinterConfiguratio
 				...data,
 				windowsCapabilities: data.windowsCapabilities ?? Prisma.DbNull,
 				isPrimary,
+				receiptSections: isPrimary ? ['customer', 'address', 'payment', 'notes', 'totals'] : [],
+				receiptLayout: resolvePrinterReceiptLayout({ isPrimary }),
 			},
 			select: printerConfigurationSelect,
 		});
@@ -132,6 +136,11 @@ export class PrismaPrinterConfigurationRepository implements PrinterConfiguratio
 		const subcategoryIds = [...new Set(data.subcategoryIds)];
 		await this.database.$transaction(async transaction => {
 			await transaction.printerCategory.deleteMany({ where: { printerId: id } });
+			if (data.receiptLayout !== undefined) {
+				await transaction.printerConfiguration.update({
+					where: { id }, data: { receiptLayout: data.receiptLayout },
+				});
+			}
 			if (data.receiptSections !== undefined) {
 				await transaction.printerConfiguration.update({
 					where: { id },
@@ -158,13 +167,17 @@ export class PrismaPrinterConfigurationRepository implements PrinterConfiguratio
 
 	async setPrimary(id: string, storeId: string) {
 		await this.database.$transaction(async transaction => {
+			const selected = await transaction.printerConfiguration.findUniqueOrThrow({ where: { id }, select: { receiptLayout: true } });
 			await transaction.printerConfiguration.updateMany({
 				where: { storeId, isPrimary: true, id: { not: id } },
 				data: { isPrimary: false },
 			});
 			await transaction.printerConfiguration.update({
 				where: { id },
-				data: { isPrimary: true },
+				data: { isPrimary: true, receiptLayout: {
+					...resolvePrinterReceiptLayout({ receiptLayout: selected.receiptLayout as import('@delivery-cruzeiro/types').PrinterReceiptLayout | null }),
+					showLogo: true, categoriesEnabled: true, subcategoriesEnabled: true, orderDataEnabled: true,
+				} },
 			});
 		});
 		return this.database.printerConfiguration.findUniqueOrThrow({

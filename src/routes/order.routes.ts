@@ -1,5 +1,5 @@
 import type { FastifyInstance, RouteHandlerMethod } from 'fastify';
-import { getAdminOrders, updateAdminOrderStatus } from '../controllers/order.controller.js';
+import { getAdminOrders, getAdminOrderHistory, updateAdminOrderStatus } from '../controllers/order.controller.js';
 import { requireManager } from '../middleware/auth.middleware.js';
 
 const getAdminOrdersHandler = getAdminOrders as unknown as RouteHandlerMethod;
@@ -14,6 +14,7 @@ const orderIdParamsSchema = {
 } as const;
 
 export async function orderRoutes(fastify: FastifyInstance) {
+	fastify.get('/admin/orders/history', { preHandler: requireManager }, getAdminOrderHistory);
 	fastify.get(
 		'/admin/orders',
 		{

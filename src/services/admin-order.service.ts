@@ -1,6 +1,7 @@
 import {
 	OrderStatus,
 	type ListAdminOrdersQueryDTO,
+	type AdminOrderHistoryQueryDTO,
 	type UpdateAdminOrderStatusDTO,
 } from '@delivery-cruzeiro/types';
 import {
@@ -55,6 +56,12 @@ export class AdminOrderService {
 		private readonly orderRepository: AdminOrderRepository = new PrismaAdminOrderRepository(),
 		private readonly orderEvents: OrderChangeEventPublisher = orderEventsEmitter
 	) {}
+
+	async listHistory(query: AdminOrderHistoryQueryDTO) {
+		const { orders, total } = await this.orderRepository.findHistory(query);
+		return { orders: orders.map(serializeAdminOrder), total, page: query.page,
+			pageSize: query.pageSize, totalPages: Math.ceil(total / query.pageSize) };
+	}
 
 	async listOrders(query: ListAdminOrdersQueryDTO) {
 		const filters = {

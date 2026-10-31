@@ -110,6 +110,19 @@ model LoginAttempt {
   @@index([expiresAt])
 }
 
+// Temporary secrets are HMAC digests; no email code is stored in plaintext.
+model PasswordRecovery {
+  key               String   @id
+  userId            String
+  codeHash          String?
+  authorizationHash String?
+  expiresAt         DateTime
+  attempts          Int      @default(0)
+  lastSentAt        DateTime
+
+  @@index([expiresAt])
+}
+
 enum UserRole {
   CLIENT
   ADMIN
@@ -475,6 +488,7 @@ model PrinterConfiguration {
   connectionStatus PrinterConnectionStatus @default(DISCONNECTED) @map("connection_status")
   isPrimary        Boolean                 @default(false) @map("is_primary")
   receiptSections  String[]                @default(["customer", "address", "payment", "notes", "totals"]) @map("receipt_sections")
+  receiptLayout    Json?                   @map("receipt_layout")
   createdAt        DateTime                @default(now()) @map("created_at")
   updatedAt        DateTime                @updatedAt @map("updated_at")
 
@@ -717,6 +731,7 @@ model FiscalSequence {
 // ============================================
 
 model OrderItem {
+  additionalFieldValues Json? @map("additional_field_values")
   id        String  @id @default(cuid())
   orderId   String
   order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)

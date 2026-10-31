@@ -1,5 +1,6 @@
 import {
 	formatZodError,
+	adminOrderHistoryQuerySchema,
 	listAdminOrdersQuerySchema,
 	updateAdminOrderStatusSchema,
 	type ListAdminOrdersQueryDTO,
@@ -9,6 +10,12 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AdminOrderService, OrderStatusTransitionError } from '../services/admin-order.service.js';
 
 const adminOrderService = new AdminOrderService();
+
+export const getAdminOrderHistory = async (request: FastifyRequest, reply: FastifyReply) => {
+	const validation = adminOrderHistoryQuerySchema.safeParse(request.query ?? {});
+	if (!validation.success) return sendValidationError(reply, formatZodError(validation.error));
+	return reply.send(await adminOrderService.listHistory(validation.data));
+};
 
 function sendValidationError(reply: FastifyReply, error: ReturnType<typeof formatZodError>) {
 	return reply.status(error.statusCode ?? 400).send({

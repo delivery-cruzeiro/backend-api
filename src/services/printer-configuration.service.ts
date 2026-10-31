@@ -1,6 +1,7 @@
 import {
 	PrinterConnectionStatus,
 	createPrinterConfigurationSchema,
+	resolvePrinterReceiptLayout,
 	type CreatePrinterConfigurationDTO,
 	type PrinterConfiguration,
 	type SetPrinterAssignmentsDTO,
@@ -28,6 +29,7 @@ function serialize(record: PrinterConfigurationRecord): PrinterConfiguration {
 	const { categories, subcategories, ...printer } = record;
 	return {
 		...printer,
+		receiptLayout: printer.receiptLayout as PrinterConfiguration['receiptLayout'],
 		receiptSections: printer.receiptSections as PrinterConfiguration['receiptSections'],
 		lastKnownStatus: printer.lastKnownStatus as PrinterConfiguration['lastKnownStatus'],
 		transport: printer.transport as PrinterConfiguration['transport'],
@@ -113,7 +115,16 @@ export class PrinterConfigurationService {
 		) {
 			throw new PrinterConfigurationError('Uma ou mais categorias nao pertencem a loja', 400);
 		}
-		return serialize(await this.repository.setAssignments(id, data));
+		// Older registration clients send assignments without the new layout contract.
+		const layout = resolvePrinterReceiptLayout(serialize(current));
+		return serialize(await this.repository.setAssignments(id, {
+			...data,
+			receiptLayout: data.receiptLayout ?? { ...layout,
+				categoriesEnabled: current.isPrimary || data.categoryIds.length > 0,
+				subcategoriesEnabled: current.isPrimary || data.subcategoryIds.length > 0,
+				orderDataEnabled: current.isPrimary || (data.receiptSections === undefined ? layout.orderDataEnabled : data.receiptSections.length > 0),
+			},
+		}));
 	}
 
 	async delete(id: string, actor: PrinterConfigurationActor) {

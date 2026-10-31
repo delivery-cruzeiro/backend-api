@@ -134,6 +134,7 @@ export class ClientOrderService {
 		}
 
 		const orderItems: Array<{
+			additionalFieldValues?: import('@delivery-cruzeiro/types').ProductAdditionalFieldValueDTO[];
 			notes?: string;
 			price: number;
 			productId: string;
@@ -171,6 +172,7 @@ export class ClientOrderService {
 				.join('\n');
 
 			orderItems.push({
+				additionalFieldValues: additionalFields.values,
 				notes: itemNotes || undefined,
 				price,
 				productId: item.productId,

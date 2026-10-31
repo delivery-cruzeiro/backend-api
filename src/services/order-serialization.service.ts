@@ -17,6 +17,7 @@ export function serializeAdminOrder(order: AdminOrderRecord): AdminOrder {
 		discount: Number(order.discount),
 		items: order.items.map(item => ({
 			...item,
+			additionalFieldValues: item.additionalFieldValues as import('@delivery-cruzeiro/types').ProductAdditionalFieldValueDTO[] | null,
 			price: Number(item.price),
 		})),
 		paymentType: order.paymentType as PaymentType | null,

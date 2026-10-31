@@ -2,9 +2,11 @@ import type { FastifyInstance, RouteHandlerMethod } from 'fastify';
 import { loginUserSchema, registerUserSchema } from '@delivery-cruzeiro/types';
 import { register, login, logout, getMe, refreshToken } from '../controllers/auth.controller.js';
 import { limitLogin } from '../security/login-limit.js';
+import { passwordRecoveryRoutes } from './password-recovery.routes.js';
 import { validateZod } from '../middleware/validate-zod.middleware.js';
 
 export async function authRoutes(fastify: FastifyInstance) {
+	await fastify.register(passwordRecoveryRoutes);
 	// Registro de usuário (rota customizada)
 	fastify.post(
 		'/auth/register',

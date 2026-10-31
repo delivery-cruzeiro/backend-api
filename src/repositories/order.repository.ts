@@ -1,4 +1,4 @@
-import { OrderStatus, type PaymentType } from '@delivery-cruzeiro/types';
+import { OrderStatus, type PaymentType, type AdminOrderHistoryQueryDTO } from '@delivery-cruzeiro/types';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { storeSummarySelect } from '../services/catalog-store.utils.js';
@@ -56,6 +56,7 @@ export const adminOrderSelect = {
 	updatedAt: true,
 	items: {
 		select: {
+			additionalFieldValues: true,
 			id: true,
 			orderId: true,
 			productId: true,
@@ -67,8 +68,8 @@ export const adminOrderSelect = {
 					imageUrl: true,
 					categoryId: true,
 					subcategoryId: true,
-					category: { select: { name: true } },
-					subcategory: { select: { name: true } },
+					category: { select: { name: true, additionalFields: true } },
+					subcategory: { select: { name: true, additionalFields: true } },
 				},
 			},
 			quantity: true,
@@ -182,6 +183,7 @@ export type ClientOrderRecord = Prisma.OrderGetPayload<{
 }>;
 
 export interface AdminOrderRepository {
+	findHistory(query: AdminOrderHistoryQueryDTO): Promise<{ orders: AdminOrderRecord[]; total: number }>;
 	findById(id: string): Promise<AdminOrderRecord | null>;
 	findMany(input?: {
 		excludedStatuses?: OrderStatus[];
@@ -242,6 +244,30 @@ export interface ClientOrderRepository {
 
 export class PrismaAdminOrderRepository implements AdminOrderRepository {
 	constructor(private readonly database: PrismaClient = prisma) {}
+
+	async findHistory(query: AdminOrderHistoryQueryDTO) {
+		// Date filters cover complete calendar days in the store's Brasília timezone.
+		const where: Prisma.OrderWhereInput = {
+			...(query.storeId && { storeId: query.storeId }),
+			...(query.status && query.status !== 'ALL' && { status: query.status }),
+			...(query.customerName && { user: { name: { contains: query.customerName, mode: 'insensitive' } } }),
+			...(query.orderNumber !== undefined && { orderNumber: query.orderNumber }),
+			...((query.minTotal !== undefined || query.maxTotal !== undefined) && {
+				total: { gte: query.minTotal, lte: query.maxTotal },
+			}),
+			...((query.startDate || query.endDate) && { createdAt: {
+				...(query.startDate && { gte: new Date(`${query.startDate}T00:00:00-03:00`) }),
+				...(query.endDate && { lt: new Date(new Date(`${query.endDate}T00:00:00-03:00`).getTime() + 86400000) }),
+			} }),
+		};
+		return this.database.$transaction(async database => {
+			const total = await database.order.count({ where });
+			const orders = await database.order.findMany({ where, select: adminOrderSelect,
+				orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+				skip: (query.page - 1) * query.pageSize, take: query.pageSize });
+			return { orders, total };
+		});
+	}
 
 	async findById(id: string) {
 		return this.database.order.findUnique({
