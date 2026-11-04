@@ -7,12 +7,14 @@ import dotenv from 'dotenv';
 import { isAllowedOrigin } from './security/config.js';
 import { registerSecurityHooks } from './security/http.js';
 import { assertDatabaseSecurity } from './lib/prisma.js';
+import { closeNominatimQueue } from './lib/nominatim-request-queue.js';
 import { orderEventsEmitter } from './events/order-events.emitter.js';
 import { SocketGateway } from './gateways/socket.gateway.js';
 import { appConfigRoutes } from './routes/app-config.routes.js';
 import { deploymentReleaseRoutes } from './routes/deployment-release.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { badgeRoutes } from './routes/badge.routes.js';
+import { systemImageRoutes } from './routes/system-image.routes.js';
 import { categoryRoutes } from './routes/category.routes.js';
 import { carouselRoutes } from './routes/carousel.routes.js';
 import { clientRoutes } from './routes/client.routes.js';
@@ -119,6 +121,7 @@ const startServer = async () => {
 		fastify.addHook('onClose', async () => {
 			unsubscribeWhatsAppAutomation();
 			await socketGateway.close();
+			await closeNominatimQueue();
 		});
 
 		fastify.get('/health', async () => {
@@ -141,6 +144,7 @@ const startServer = async () => {
 		await fastify.register(badgeRoutes, { prefix: '/api' });
 		await fastify.register(appConfigRoutes, { prefix: '/api' });
 		await fastify.register(deploymentReleaseRoutes, { prefix: '/api' });
+		await fastify.register(systemImageRoutes, { prefix: '/api' });
 		await fastify.register(categoryRoutes, { prefix: '/api' });
 		await fastify.register(carouselRoutes, { prefix: '/api' });
 		await fastify.register(clientRoutes, { prefix: '/api' });

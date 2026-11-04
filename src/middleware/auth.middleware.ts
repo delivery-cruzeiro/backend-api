@@ -1,3 +1,4 @@
+import { UserRole, hasRole } from '@delivery-cruzeiro/types';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { auth } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
@@ -8,7 +9,7 @@ export interface AuthenticatedRequest extends FastifyRequest {
 		id: string;
 		email: string;
 		name: string;
-		role: string;
+		role: number;
 	};
 }
 
@@ -54,7 +55,7 @@ export const authenticate = async (request: AuthenticatedRequest, reply: Fastify
 			role: user.role,
 		};
 		const identity = databaseIdentity.getStore();
-		if (identity) Object.assign(identity, {kind:'user', userId:user.id, role:user.role});
+		if (identity) Object.assign(identity, { kind: 'user', userId: user.id, role: user.role });
 	} catch (error) {
 		console.error('Erro ao autenticar:', error);
 		return reply.status(401).send({
@@ -63,7 +64,7 @@ export const authenticate = async (request: AuthenticatedRequest, reply: Fastify
 	}
 };
 
-export const requireRole = (...roles: string[]) => {
+export const requireRole = (minimumRole: UserRole) => {
 	return async (request: AuthenticatedRequest, reply: FastifyReply) => {
 		try {
 			await authenticate(request, reply);
@@ -72,7 +73,7 @@ export const requireRole = (...roles: string[]) => {
 				return;
 			}
 
-			if (!request.user || !roles.includes(request.user.role)) {
+			if (!request.user || !hasRole(request.user.role, minimumRole)) {
 				return reply.status(403).send({
 					error: 'Permissao insuficiente',
 				});
@@ -86,6 +87,6 @@ export const requireRole = (...roles: string[]) => {
 	};
 };
 
-export const requireAdmin = requireRole('ADMIN', 'SUPER_ADMIN');
-export const requireManager = requireRole('MANAGER', 'ADMIN', 'SUPER_ADMIN');
-export const requireSuperAdmin = requireRole('SUPER_ADMIN');
+export const requireAdmin = requireRole(UserRole.ADMIN);
+export const requireManager = requireRole(UserRole.MANAGER);
+export const requireSuperAdmin = requireRole(UserRole.SUPER_ADMIN);

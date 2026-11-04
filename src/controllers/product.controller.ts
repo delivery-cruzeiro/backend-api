@@ -1,3 +1,4 @@
+import { saveWithImages, ImageLibraryError } from '../services/system-image.service.js';
 import {
 	createProductSchema,
 	formatZodError,
@@ -43,6 +44,7 @@ const productSelect = {
 	price: true,
 	pricingMode: true,
 	imageUrl: true,
+	imageUrls: true,
 	additionalFields: true,
 	unavailable: true,
 	order: true,
@@ -146,6 +148,7 @@ function normalizeProductInput(fields: Record<string, unknown>) {
 			subcategoryId: fields.subcategoryId || null,
 		}),
 		...(fields.description !== undefined && { description: fields.description }),
+		...(fields.imageUrls !== undefined && { imageUrls: parseJsonArrayField(fields.imageUrls) ?? fields.imageUrls }),
 		...(typeof fields.imageUrl === 'string' &&
 			fields.imageUrl.trim() && { imageUrl: fields.imageUrl }),
 		...(fields.isActive !== undefined && { isActive: parseBooleanField(fields.isActive) }),
@@ -277,6 +280,7 @@ export const getProducts = async (
 			total: products.length,
 		});
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao buscar produtos:', error);
 		return reply.status(500).send({
 			error: 'Erro interno do servidor',
@@ -363,14 +367,14 @@ export const createProduct = async (
 				})
 			: validation.data.imageUrl;
 
-		const product = await prisma.product.create({
+		const product = await saveWithImages(validation.data, imageUrl, images => prisma.product.create({
 			data: {
 				badges: {
 					create: uniqueBadgeIds.map(badgeId => ({ badgeId })),
 				},
 				categoryId,
 				description,
-				imageUrl,
+				...images,
 				additionalFields,
 				unavailable,
 				isActive,
@@ -382,13 +386,14 @@ export const createProduct = async (
 				stores: buildStoreConnect(storeIds),
 			},
 			select: productSelect,
-		});
+		}));
 
 		return reply.status(201).send({
 			message: 'Produto criado com sucesso',
 			product: serializeProduct(product),
 		});
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao criar produto:', error);
 		return reply.status(500).send({
 			error: 'Erro interno do servidor',
@@ -503,7 +508,7 @@ export const updateProduct = async (
 		delete productData.badgeIds;
 		delete productData.storeIds;
 
-		const product = await prisma.product.update({
+		const product = await saveWithImages(validation.data, imageUrl, images => prisma.product.update({
 			where: { id },
 			data: {
 				...productData,
@@ -516,16 +521,17 @@ export const updateProduct = async (
 				...(productData.categoryId &&
 					productData.subcategoryId === undefined && { subcategoryId: null }),
 				stores: buildStoreSet(storeIds),
-				...(imageUrl && { imageUrl }),
+				...images,
 			},
 			select: productSelect,
-		});
+		}));
 
 		return reply.send({
 			message: 'Produto atualizado com sucesso',
 			product: serializeProduct(product),
 		});
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao atualizar produto:', error);
 		return reply.status(500).send({
 			error: 'Erro interno do servidor',
@@ -558,6 +564,7 @@ export const deleteProduct = async (
 			message: 'Produto deletado com sucesso',
 		});
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao deletar produto:', error);
 		return reply.status(500).send({
 			error: 'Erro interno do servidor',
@@ -663,6 +670,7 @@ export const bulkUpdateProducts = async (
 			updated: products.length,
 		});
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao atualizar produtos em escala:', error);
 		return reply.status(500).send({
 			error: 'Erro interno do servidor',

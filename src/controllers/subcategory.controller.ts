@@ -1,3 +1,4 @@
+import { ImageLibraryError } from '../services/system-image.service.js';
 import {
 	createSubcategorySchema,
 	formatZodError,
@@ -98,6 +99,7 @@ export const getSubcategories = async (
 			total: subcategories.length,
 		});
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao buscar subcategorias:', error);
 		return reply.status(500).send({ error: 'Erro interno do servidor' });
 	}
@@ -128,6 +130,7 @@ export const createSubcategory = async (
 			subcategory,
 		});
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		const message = error instanceof Error ? error.message : 'Erro interno do servidor';
 
 		console.error('Erro ao criar subcategoria:', error);
@@ -144,6 +147,7 @@ export const deleteSubcategory = async (
 
 		return reply.send({ message: 'Subcategoria deletada com sucesso' });
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		const message = error instanceof Error ? error.message : 'Erro interno do servidor';
 
 		console.error('Erro ao deletar subcategoria:', error);
@@ -182,6 +186,7 @@ export const updateSubcategory = async (
 			subcategory,
 		});
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		const message = error instanceof Error ? error.message : 'Erro interno do servidor';
 
 		console.error('Erro ao atualizar subcategoria:', error);

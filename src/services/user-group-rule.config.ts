@@ -12,7 +12,7 @@ import {
 export type UserGroupRuleValueType = 'boolean' | 'date' | 'entity' | 'enum' | 'number' | 'text';
 
 export type UserGroupRuleFieldConfig = {
-	allowedValues?: readonly string[];
+	allowedValues?: readonly (string | number)[];
 	integer?: boolean;
 	operators: readonly UserGroupRuleOperator[];
 	valueType: UserGroupRuleValueType;

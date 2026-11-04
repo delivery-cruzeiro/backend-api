@@ -1,3 +1,4 @@
+import { UserRole, hasRole } from '@delivery-cruzeiro/types';
 import {
 	createStorePaymentMethodSchema,
 	formatZodError,
@@ -22,7 +23,9 @@ async function ensureStoreAccess(request: AuthenticatedRequest, storeId: string)
 	return prisma.store.findFirst({
 		where: {
 			id: storeId,
-			...(request.user?.role !== 'SUPER_ADMIN' && { users: { some: { id: request.user?.id } } }),
+			...(!hasRole(request.user?.role, UserRole.SUPER_ADMIN) && {
+				users: { some: { id: request.user?.id } },
+			}),
 		},
 		select: { id: true },
 	});
@@ -72,17 +75,28 @@ export async function listActiveStorePaymentMethods(
 	return reply.send({ paymentMethods, total: paymentMethods.length });
 }
 
-export async function createStorePaymentMethod(request: FastifyRequest & AuthenticatedRequest, reply: FastifyReply) {
+export async function createStorePaymentMethod(
+	request: FastifyRequest & AuthenticatedRequest,
+	reply: FastifyReply
+) {
 	const validation = createStorePaymentMethodSchema.safeParse(request.body ?? {});
 	if (!validation.success) return validationError(reply, validation.error);
 	if (!(await ensureStoreAccess(request, validation.data.storeId))) {
 		return reply.status(404).send({ error: 'Loja nao encontrada ou sem permissao' });
 	}
 	try {
-		const paymentMethod = await prisma.storePaymentMethod.create({ data: validation.data, select });
-		return reply.status(201).send({ message: 'Forma de pagamento criada com sucesso', paymentMethod });
+		const paymentMethod = await prisma.storePaymentMethod.create({
+			data: validation.data,
+			select,
+		});
+		return reply
+			.status(201)
+			.send({ message: 'Forma de pagamento criada com sucesso', paymentMethod });
 	} catch (error) {
-		if (isUniqueConstraintError(error)) return reply.status(409).send({ error: 'Ja existe uma forma de pagamento com este nome na loja' });
+		if (isUniqueConstraintError(error))
+			return reply
+				.status(409)
+				.send({ error: 'Ja existe uma forma de pagamento com este nome na loja' });
 		throw error;
 	}
 }
@@ -93,15 +107,25 @@ export async function updateStorePaymentMethod(
 ) {
 	const validation = updateStorePaymentMethodSchema.safeParse(request.body ?? {});
 	if (!validation.success) return validationError(reply, validation.error);
-	const existing = await prisma.storePaymentMethod.findUnique({ where: { id: request.params.id }, select: { storeId: true } });
+	const existing = await prisma.storePaymentMethod.findUnique({
+		where: { id: request.params.id },
+		select: { storeId: true },
+	});
 	if (!existing || !(await ensureStoreAccess(request, existing.storeId))) {
 		return reply.status(404).send({ error: 'Forma de pagamento nao encontrada' });
 	}
 	try {
-		const paymentMethod = await prisma.storePaymentMethod.update({ where: { id: request.params.id }, data: validation.data, select });
+		const paymentMethod = await prisma.storePaymentMethod.update({
+			where: { id: request.params.id },
+			data: validation.data,
+			select,
+		});
 		return reply.send({ message: 'Forma de pagamento atualizada com sucesso', paymentMethod });
 	} catch (error) {
-		if (isUniqueConstraintError(error)) return reply.status(409).send({ error: 'Ja existe uma forma de pagamento com este nome na loja' });
+		if (isUniqueConstraintError(error))
+			return reply
+				.status(409)
+				.send({ error: 'Ja existe uma forma de pagamento com este nome na loja' });
 		throw error;
 	}
 }

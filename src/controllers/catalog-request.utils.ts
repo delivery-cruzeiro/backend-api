@@ -111,6 +111,7 @@ export function normalizeBaseCatalogInput(fields: Record<string, unknown>) {
 		}),
 		...(typeof fields.description === 'string' &&
 			fields.description.trim() && { description: fields.description }),
+		...(fields.imageUrls !== undefined && { imageUrls: parseJsonArrayField(fields.imageUrls) ?? fields.imageUrls }),
 		...(typeof fields.imageUrl === 'string' &&
 			fields.imageUrl.trim() && { imageUrl: fields.imageUrl }),
 		...(fields.isActive !== undefined && { isActive: parseBooleanField(fields.isActive) }),

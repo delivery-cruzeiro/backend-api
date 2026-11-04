@@ -1,3 +1,5 @@
+import { saveWithImages, ImageLibraryError } from '../services/system-image.service.js';
+import { UserRole, hasRole } from '@delivery-cruzeiro/types';
 import {
 	activateCarouselSchema,
 	createCarouselSchema,
@@ -127,11 +129,11 @@ async function uploadSlideImages(
 	return { ...content, slides };
 }
 
-async function ensureStoreAccess(userId: string, role: string, storeId: string) {
+async function ensureStoreAccess(userId: string, role: number, storeId: string) {
 	const store = await prisma.store.findFirst({
 		where: {
 			id: storeId,
-			...(role !== 'SUPER_ADMIN' && { users: { some: { id: userId } } }),
+			...(!hasRole(role, UserRole.SUPER_ADMIN) && { users: { some: { id: userId } } }),
 		},
 		select: { id: true },
 	});
@@ -175,6 +177,7 @@ export async function listCarousels(
 
 		return reply.send({ carousels, total: carousels.length });
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao listar carousels:', error);
 		const message = error instanceof Error ? error.message : 'Erro interno do servidor';
 		return reply.status(message.includes('permissao') ? 404 : 500).send({ error: message });
@@ -199,6 +202,7 @@ export async function getCarousel(
 		await ensureStoreAccess(user.id, user.role, carousel.storeId);
 		return reply.send({ carousel });
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao buscar carousel:', error);
 		const message = error instanceof Error ? error.message : 'Erro interno do servidor';
 		return reply.status(message.includes('permissao') ? 404 : 500).send({ error: message });
@@ -223,6 +227,7 @@ export async function getActiveCarousel(
 
 		return reply.send({ carousel });
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao buscar carousel ativo:', error);
 		return reply.status(500).send({ error: 'Erro interno do servidor' });
 	}
@@ -240,7 +245,7 @@ export async function createCarousel(request: FastifyRequest, reply: FastifyRepl
 		const user = (request as AuthenticatedRequest).user!;
 		await ensureStoreAccess(user.id, user.role, validation.data.storeId);
 		const content = await uploadSlideImages(validation.data.content, images);
-		const carousel = await prisma.carousel.create({
+		const carousel = await saveWithImages({ imageUrls: content?.slides.flatMap(slide => slide.imageUrl ? [slide.imageUrl] : []) }, undefined, () => prisma.carousel.create({
 			data: {
 				content,
 				createdById: user.id,
@@ -249,10 +254,11 @@ export async function createCarousel(request: FastifyRequest, reply: FastifyRepl
 				storeId: validation.data.storeId,
 			},
 			select: carouselSelect,
-		});
+		}));
 
 		return reply.status(201).send({ carousel, message: 'Carousel criado com sucesso' });
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao criar carousel:', error);
 		const message = error instanceof Error ? error.message : 'Erro interno do servidor';
 		return reply.status(message.includes('Selecione') ? 400 : 500).send({ error: message });
@@ -285,7 +291,7 @@ export async function updateCarousel(
 		const content = validation.data.content
 			? await uploadSlideImages(validation.data.content, images)
 			: undefined;
-		const carousel = await prisma.carousel.update({
+		const carousel = await saveWithImages({ imageUrls: content?.slides.flatMap(slide => slide.imageUrl ? [slide.imageUrl] : []) }, undefined, () => prisma.carousel.update({
 			where: { id: request.params.id },
 			data: {
 				...(content && { content }),
@@ -293,10 +299,11 @@ export async function updateCarousel(
 				lastModifiedById: user.id,
 			},
 			select: carouselSelect,
-		});
+		}));
 
 		return reply.send({ carousel, message: 'Carousel atualizado com sucesso' });
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao atualizar carousel:', error);
 		const message = error instanceof Error ? error.message : 'Erro interno do servidor';
 		return reply.status(message.includes('Selecione') ? 400 : 500).send({ error: message });
@@ -337,6 +344,7 @@ export async function activateCarousel(request: FastifyRequest, reply: FastifyRe
 
 		return reply.send({ carousel, message: 'Carousel ativado com sucesso' });
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao ativar carousel:', error);
 		return reply.status(500).send({ error: 'Erro interno do servidor' });
 	}
@@ -361,6 +369,7 @@ export async function deleteCarousel(
 		await prisma.carousel.delete({ where: { id: request.params.id } });
 		return reply.send({ message: 'Carousel deletado com sucesso' });
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao deletar carousel:', error);
 		return reply.status(500).send({ error: 'Erro interno do servidor' });
 	}

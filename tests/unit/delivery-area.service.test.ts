@@ -84,4 +84,10 @@ describe("delivery area resolution", () => {
       }),
     ).toBeNull();
   });
+  it('refuses uncertain points near a cut while accepting an interior with clearance', async () => {
+    const service=new DeliveryAreaService();
+    expect(await service.resolve({...input,longitude:0.00499,locationAccuracyMeters:30})).toEqual({needsLocation:true});
+    expect(await service.resolve({...input,longitude:0.002,locationAccuracyMeters:30})).toMatchObject({needsLocation:false,area:{id:'one'}});
+    expect(await service.resolve({...input,longitude:0.002,locationAccuracyMeters:NaN})).toEqual({needsLocation:true});
+  });
 });

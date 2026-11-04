@@ -1,3 +1,4 @@
+import { requireCatalogUpdate } from '../middleware/catalog-access.middleware.js';
 import type { FastifyInstance, RouteHandlerMethod } from 'fastify';
 import {
 	createCategory,
@@ -30,12 +31,19 @@ const additionalFieldSchema = {
 		required: { type: 'boolean', default: false },
 		minQuantity: { type: 'integer', minimum: 0, maximum: 999 },
 		maxQuantity: { type: 'integer', minimum: 0, maximum: 999 },
-		quantityOptions: { type: 'array', items: { type: 'object', properties: {
-			id: { type: 'string' }, label: { type: 'string' },
-			additionalValue: { type: 'number', minimum: 0, maximum: 999.99 },
-			minQuantity: { type: 'integer', minimum: 0, maximum: 999 },
-			maxQuantity: { type: 'integer', minimum: 0, maximum: 999 },
-		} } },
+		quantityOptions: {
+			type: 'array',
+			items: {
+				type: 'object',
+				properties: {
+					id: { type: 'string' },
+					label: { type: 'string' },
+					additionalValue: { type: 'number', minimum: 0, maximum: 999.99 },
+					minQuantity: { type: 'integer', minimum: 0, maximum: 999 },
+					maxQuantity: { type: 'integer', minimum: 0, maximum: 999 },
+				},
+			},
+		},
 		options: { type: 'array', items: { type: 'string' } },
 		type: { type: 'string', enum: ['COMBOBOX', 'CHECKBOX', 'TEXT', 'RADIO', 'MULTI_OPTION'] },
 	},
@@ -57,11 +65,15 @@ export async function categoryRoutes(fastify: FastifyInstance) {
 								items: {
 									type: 'object',
 									properties: {
-										additionalFields: { type: 'array', items: additionalFieldSchema },
+										additionalFields: {
+											type: 'array',
+											items: additionalFieldSchema,
+										},
 										id: { type: 'string' },
 										name: { type: 'string' },
 										description: { type: 'string', nullable: true },
 										imageUrl: { type: 'string', nullable: true },
+		imageUrls: { type: 'array', items: { type: 'string' } },
 										order: { type: 'number' },
 										isActive: { type: 'boolean' },
 										createdAt: { type: 'string' },
@@ -98,11 +110,15 @@ export async function categoryRoutes(fastify: FastifyInstance) {
 							category: {
 								type: 'object',
 								properties: {
-									additionalFields: { type: 'array', items: additionalFieldSchema },
+									additionalFields: {
+										type: 'array',
+										items: additionalFieldSchema,
+									},
 									id: { type: 'string' },
 									name: { type: 'string' },
 									description: { type: 'string', nullable: true },
 									imageUrl: { type: 'string', nullable: true },
+		imageUrls: { type: 'array', items: { type: 'string' } },
 									order: { type: 'number' },
 									isActive: { type: 'boolean' },
 									createdAt: { type: 'string' },
@@ -169,7 +185,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
 	fastify.put(
 		'/categories/:id',
 		{
-			preHandler: requireManager,
+			preHandler: requireCatalogUpdate('isActive'),
 			schema: {
 				description: 'Atualizar categoria',
 				tags: ['Categorias'],

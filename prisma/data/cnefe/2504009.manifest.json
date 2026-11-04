@@ -1,0 +1,13 @@
+{
+  "source": "https://ftp.ibge.gov.br/Cadastro_Nacional_de_Enderecos_para_Fins_Estatisticos/Censo_Demografico_2022/Arquivos_CNEFE/CSV/Municipio/25_PB/2504009_CAMPINA_GRANDE.zip",
+  "sha256": "579a8db0f266a56a505131b130bbd9aa045db02a39f15c3596c29eb0b36d50bc",
+  "compressedBytes": 3747085,
+  "csvBytes": 35591304,
+  "csvSha256": "ac944789ebca70f2886276891238804dedc03b1b503190dc1913791983c91d9f",
+  "municipalityCode": "2504009",
+  "city": "Campina Grande",
+  "state": "PB",
+  "version": "censo2022-2024-05-20",
+  "referenceYear": 2022,
+  "expectedRecords": 215660
+}

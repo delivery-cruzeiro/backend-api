@@ -5,6 +5,9 @@ import { prisma, disconnectPrisma } from '../dist/lib/prisma.js';
 import { ClientOrderService } from '../dist/services/client-order.service.js';
 import { PrismaClientOrderRepository } from '../dist/repositories/order.repository.js';
 import { StoreShippingService } from '../dist/services/store-shipping.service.js';
+import Fastify from 'fastify';
+import { getClientShippingQuote } from '../dist/controllers/client.controller.js';
+import { closeNominatimQueue } from '../dist/lib/nominatim-request-queue.js';
 if (!process.env.DATABASE_URL?.includes('dc-geocoding-postgres')) throw Error('Isolated database required');
 try {
  const area=await prisma.deliveryArea.findFirst({include:{revision:{include:{partition:{include:{neighborhood:true}}}}}});assert.ok(area);
@@ -18,11 +21,21 @@ try {
  let requests = 0;
  const originalFetch = globalThis.fetch;
  globalThis.fetch = async (url) => {
-  assert.equal(new URL(url).hostname, 'photon.komoot.io'); requests++;
-  return new Response(JSON.stringify({features:[{type:'Feature',geometry:{type:'Point',coordinates:point},properties:{housenumber:'12',street:'Rua de Teste',postcode:'58414000',city:ref.city,countrycode:'BR'}}]}));
+  assert.equal(new URL(url).hostname, 'nominatim.openstreetmap.org'); requests++;
+  return new Response(JSON.stringify([{lat:String(point[1]),lon:String(point[0]),address:{house_number:'12',road:'Rua de Teste',postcode:'58414000',city:ref.city,country_code:'br'}}]));
  };
  const quote = await new StoreShippingService().resolveShippingQuote({storeId:area.storeId,addressId:address.id,neighborhood:ref.name,city:ref.city,state:ref.state});
  assert.equal(quote.areaId,area.id);
+ const app = Fastify();
+ let callerId = address.userId;
+ app.get('/client/shipping-quote', { preHandler: async request => { request.user = { id: callerId }; } }, getClientShippingQuote);
+ try {
+  const url = '/client/shipping-quote?' + new URLSearchParams({storeId:area.storeId,addressId:address.id});
+  const response = await app.inject({method:'GET',url});
+  assert.equal(response.statusCode,200); assert.equal(response.json().areaId,area.id);
+  callerId = 'not-the-address-owner';
+  assert.equal((await app.inject({method:'GET',url})).statusCode,404);
+ } finally { await app.close(); }
  const located=await prisma.address.findUnique({where:{id:address.id}});assert.equal(located.locationConfirmed,true);assert.ok(located.geocodingKey);
  const product=await prisma.product.findFirst({where:{isActive:true,stores:{some:{id:area.storeId}}}});assert.ok(product);
  const shipping=new StoreShippingService();
@@ -43,6 +56,6 @@ try {
  await assert.rejects(connection.query('INSERT INTO delivery_partitions(id,store_id,neighborhood_id) VALUES(gen_random_uuid(),$1,$2)',[area.storeId,ref.id]),e=>e.code==='42501');
  await connection.query('ROLLBACK');
  }finally{await connection.end();}
- console.log('PASS: automatic geocoding + quotation + actual order using the same persisted area; immutable snapshot after fee change; blocked checkout; PostgreSQL RLS rejects unauthorized store write');
-}finally{await disconnectPrisma();}
+ console.log('PASS: automatic geocoding + real quotation controller with address ownership + actual order using the same persisted area; immutable snapshot after fee change; blocked checkout; PostgreSQL RLS rejects unauthorized store write');
+}finally{await closeNominatimQueue();await disconnectPrisma();}
 

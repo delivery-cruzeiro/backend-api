@@ -1,3 +1,4 @@
+import { saveWithImages } from './system-image.service.js';
 import { type SubcategoryDTO, type UpdateSubcategoryDTO } from '@delivery-cruzeiro/types';
 import type { CatalogImageFile } from '../controllers/catalog-request.utils.js';
 import { SubcategoryRepository } from '../repositories/subcategory.repository.js';
@@ -16,16 +17,16 @@ export class SubcategoryService {
 
 		const imageUrl = await this.resolveImageUrl(input, image);
 
-		return this.repository.create({
+		return saveWithImages(input, imageUrl, images => this.repository.create({
 			additionalFields: input.additionalFields,
 			categoryId: input.categoryId,
 			description: input.description,
-			imageUrl,
+			...images,
 			isActive: input.isActive ?? true,
 			name: input.name,
 			order: input.order ?? 0,
 			storeIds: input.storeIds,
-		});
+		}));
 	}
 
 	async deleteSubcategory(id: string) {
@@ -105,9 +106,9 @@ export class SubcategoryService {
 
 		const imageUrl = await this.resolveImageUrl(input, image);
 
-		return this.repository.update(id, {
+		return saveWithImages(input, imageUrl, images => this.repository.update(id, {
 			...input,
-			...(imageUrl && { imageUrl }),
-		});
+			...images,
+		}));
 	}
 }

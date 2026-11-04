@@ -8,7 +8,7 @@ import { upsertStoreNeighborhoodShipping } from '../dist/controllers/store-shipp
 if (!process.env.DATABASE_URL?.includes('dc-area-postgres')) throw Error('Isolated database required');
 const app = Fastify(); const areas = new DeliveryAreaService(); const shipping = new StoreShippingService();
 const store = await prisma.store.findFirst({ include: { address: true } });
-const user = { id: store.ownerId, role: 'SUPER_ADMIN', name: 'Verificação', email: 'test@example.invalid', isActive: true };
+const user = { id: store.ownerId, role: 4, name: 'Verificação', email: 'test@example.invalid', isActive: true };
 app.all('/api/*', async (req, reply) => {
  try {
  const path = req.url.split('?')[0];

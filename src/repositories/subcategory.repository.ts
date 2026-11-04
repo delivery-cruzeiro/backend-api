@@ -15,6 +15,7 @@ export const subcategorySelect = {
 	name: true,
 	description: true,
 	imageUrl: true,
+	imageUrls: true,
 	order: true,
 	isActive: true,
 	createdAt: true,
@@ -28,7 +29,8 @@ type SubcategoryMutationData = {
 	additionalFields?: Prisma.InputJsonValue;
 	categoryId?: string;
 	description?: string;
-	imageUrl?: string;
+	imageUrl?: string | null;
+	imageUrls?: string[];
 	isActive?: boolean;
 	name?: string;
 	order?: number;
@@ -56,6 +58,7 @@ export class SubcategoryRepository {
 				categoryId: data.categoryId,
 				description: data.description,
 				imageUrl: data.imageUrl,
+				imageUrls: data.imageUrls,
 				isActive: data.isActive,
 				name: data.name,
 				order: data.order,

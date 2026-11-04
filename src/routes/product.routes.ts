@@ -1,3 +1,4 @@
+import { requireCatalogUpdate } from '../middleware/catalog-access.middleware.js';
 import type { FastifyInstance, RouteHandlerMethod } from 'fastify';
 import {
 	bulkUpdateProducts,
@@ -34,12 +35,19 @@ const productAdditionalFieldSchema = {
 		required: { type: 'boolean', default: false },
 		minQuantity: { type: 'integer', minimum: 0, maximum: 999 },
 		maxQuantity: { type: 'integer', minimum: 0, maximum: 999 },
-		quantityOptions: { type: 'array', items: { type: 'object', properties: {
-			id: { type: 'string' }, label: { type: 'string' },
-			additionalValue: { type: 'number', minimum: 0, maximum: 999.99 },
-			minQuantity: { type: 'integer', minimum: 0, maximum: 999 },
-			maxQuantity: { type: 'integer', minimum: 0, maximum: 999 },
-		} } },
+		quantityOptions: {
+			type: 'array',
+			items: {
+				type: 'object',
+				properties: {
+					id: { type: 'string' },
+					label: { type: 'string' },
+					additionalValue: { type: 'number', minimum: 0, maximum: 999.99 },
+					minQuantity: { type: 'integer', minimum: 0, maximum: 999 },
+					maxQuantity: { type: 'integer', minimum: 0, maximum: 999 },
+				},
+			},
+		},
 		options: {
 			type: 'array',
 			items: { type: 'string' },
@@ -79,6 +87,7 @@ const productResponseSchema = {
 		price: { type: 'number' },
 		pricingMode: { type: 'string', enum: ['FIXED', 'ADDITIVE'] },
 		imageUrl: { type: 'string', nullable: true },
+		imageUrls: { type: 'array', items: { type: 'string' } },
 		additionalFields: {
 			type: 'array',
 			items: productAdditionalFieldSchema,
@@ -170,7 +179,7 @@ export async function productRoutes(fastify: FastifyInstance) {
 	fastify.put(
 		'/products/bulk-update',
 		{
-			preHandler: requireManager,
+			preHandler: requireCatalogUpdate('isActive', 'mode', 'categoryId', 'productIds'),
 		},
 		bulkUpdateProductsHandler
 	);
@@ -178,7 +187,7 @@ export async function productRoutes(fastify: FastifyInstance) {
 	fastify.put(
 		'/products/:id',
 		{
-			preHandler: requireManager,
+			preHandler: requireCatalogUpdate('isActive', 'unavailable'),
 			schema: {
 				description: 'Atualizar produto',
 				tags: ['Produtos'],

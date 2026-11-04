@@ -13,7 +13,7 @@ import {
 	type PrinterConfigurationRepository,
 } from '../repositories/printer-configuration.repository.js';
 
-export type PrinterConfigurationActor = { id: string; role: string };
+export type PrinterConfigurationActor = { id: string; role: number };
 
 export class PrinterConfigurationError extends Error {
 	constructor(
@@ -117,14 +117,21 @@ export class PrinterConfigurationService {
 		}
 		// Older registration clients send assignments without the new layout contract.
 		const layout = resolvePrinterReceiptLayout(serialize(current));
-		return serialize(await this.repository.setAssignments(id, {
-			...data,
-			receiptLayout: data.receiptLayout ?? { ...layout,
-				categoriesEnabled: current.isPrimary || data.categoryIds.length > 0,
-				subcategoriesEnabled: current.isPrimary || data.subcategoryIds.length > 0,
-				orderDataEnabled: current.isPrimary || (data.receiptSections === undefined ? layout.orderDataEnabled : data.receiptSections.length > 0),
-			},
-		}));
+		return serialize(
+			await this.repository.setAssignments(id, {
+				...data,
+				receiptLayout: data.receiptLayout ?? {
+					...layout,
+					categoriesEnabled: current.isPrimary || data.categoryIds.length > 0,
+					subcategoriesEnabled: current.isPrimary || data.subcategoryIds.length > 0,
+					orderDataEnabled:
+						current.isPrimary ||
+						(data.receiptSections === undefined
+							? layout.orderDataEnabled
+							: data.receiptSections.length > 0),
+				},
+			})
+		);
 	}
 
 	async delete(id: string, actor: PrinterConfigurationActor) {

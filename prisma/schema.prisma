@@ -23,7 +23,7 @@ model User {
   gender        UserGender?
   phone         String?
   avatar        String?
-  role          UserRole    @default(CLIENT)
+  role          Int         @default(1)
   isActive      Boolean     @default(true)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -123,13 +123,6 @@ model PasswordRecovery {
   @@index([expiresAt])
 }
 
-enum UserRole {
-  CLIENT
-  ADMIN
-  MANAGER
-  SUPER_ADMIN
-}
-
 enum UserGender {
   FEMALE
   MALE
@@ -165,6 +158,9 @@ model Address {
   locationConfirmed Boolean @default(false) @map("location_confirmed")
   geocodingKey String? @map("geocoding_key")
   geocodingAttemptedAt DateTime? @map("geocoding_attempted_at")
+  geocodingSource String? @map("geocoding_source")
+  geocodingSourceVersion String? @map("geocoding_source_version")
+  geocodingQuality Json? @map("geocoding_quality")
   isDefault        Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -178,6 +174,41 @@ model Address {
 // ============================================
 // MODELO STORE (Lojas/Unidades)
 // ============================================
+
+model CnefeDataset {
+  id String @id @default(cuid())
+  municipalityCode String @map("municipality_code")
+  cityKey String @map("city_key")
+  state String
+  version String
+  checksum String
+  sourceUrl String @map("source_url")
+  referenceYear Int @map("reference_year")
+  recordCount Int @map("record_count")
+  active Boolean @default(false)
+  importedAt DateTime @default(now()) @map("imported_at")
+  addresses CnefeAddress[]
+
+  @@unique([municipalityCode, checksum])
+  @@index([cityKey, state, active])
+  @@map("cnefe_datasets")
+}
+
+model CnefeAddress {
+  datasetId String @map("dataset_id")
+  sourceId String @map("source_id")
+  zipCode String @map("zip_code")
+  streetKey String @map("street_key")
+  numberKey String @map("number_key")
+  latitude Float
+  longitude Float
+  geoLevel Int @map("geo_level")
+  dataset CnefeDataset @relation(fields: [datasetId], references: [id], onDelete: Restrict)
+
+  @@id([datasetId, sourceId])
+  @@index([datasetId, zipCode, streetKey, numberKey])
+  @@map("cnefe_addresses")
+}
 
 model Store {
   id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -395,6 +426,7 @@ model Category {
   name        String   @unique
   description String?
   imageUrl    String?
+  imageUrls   String[] @default([])
   additionalFields Json       @default("[]") @map("additional_fields")
   order       Int      @default(0)
   isActive    Boolean  @default(true)
@@ -442,6 +474,7 @@ model Subcategory {
   name        String
   description String?
   imageUrl    String?
+  imageUrls   String[] @default([])
   additionalFields Json       @default("[]") @map("additional_fields")
   order       Int      @default(0)
   isActive    Boolean  @default(true)
@@ -546,6 +579,7 @@ model Product {
   price            Decimal      @db.Decimal(10, 2)
   pricingMode      String       @default("FIXED") @map("pricing_mode")
   imageUrl         String?
+  imageUrls        String[] @default([])
   additionalFields Json         @default("[]") @map("additional_fields")
   unavailable      Boolean      @default(false)
   isActive         Boolean      @default(true)
@@ -563,6 +597,22 @@ model Product {
   @@index([categoryId])
   @@index([subcategoryId])
   @@index([isActive])
+}
+
+model SystemImage {
+  id        String   @id @default(cuid())
+  url       String   @unique
+  publicId  String?  @unique
+  name      String
+  directory String   @default("geral")
+  width     Int?
+  height    Int?
+  bytes     Int?
+  deleting  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([directory, createdAt])
 }
 
 model ProductBadge {

@@ -1,3 +1,4 @@
+import { UserRole } from '@delivery-cruzeiro/types';
 import { createUserSchema } from '@delivery-cruzeiro/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -60,7 +61,7 @@ describe('User Controller', () => {
 				password: 'password123',
 				name: 'Test User',
 				phone: '11999999999',
-				role: 'CLIENT' as const,
+				role: UserRole.CLIENT,
 			};
 			const createdUser = {
 				id: '1',
@@ -84,7 +85,7 @@ describe('User Controller', () => {
 				data: expect.objectContaining({
 					email: userData.email,
 					password: 'hashed-password',
-					role: 'CLIENT',
+					role: UserRole.CLIENT,
 				}),
 				select: expect.any(Object),
 			});
@@ -151,10 +152,17 @@ describe('User Controller', () => {
 			mockRequest.query = { search: '123.4' };
 			vi.mocked(prisma.user.findMany).mockResolvedValue([]);
 			await getUsers(mockRequest, mockReply);
-			expect(prisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
-				take: 20,
-				where: { OR: [{ name: { startsWith: '123.4', mode: 'insensitive' } }, { cpf: { startsWith: '1234' } }] },
-			}));
+			expect(prisma.user.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					take: 20,
+					where: {
+						OR: [
+							{ name: { startsWith: '123.4', mode: 'insensitive' } },
+							{ cpf: { startsWith: '1234' } },
+						],
+					},
+				})
+			);
 		});
 
 		it('paginates non-client users in the database', async () => {
@@ -162,9 +170,13 @@ describe('User Controller', () => {
 			vi.mocked(prisma.user.findMany).mockResolvedValue([]);
 			vi.mocked(prisma.user.count).mockResolvedValue(75);
 			await getUsers(mockRequest, mockReply);
-			expect(prisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
-				where: { role: { not: 'CLIENT' } }, take: 50, skip: 50,
-			}));
+			expect(prisma.user.findMany).toHaveBeenCalledWith(
+				expect.objectContaining({
+					where: { role: { not: UserRole.CLIENT } },
+					take: 50,
+					skip: 50,
+				})
+			);
 			expect(mockReply.send).toHaveBeenCalledWith({ users: [], total: 75 });
 		});
 		it('deve listar todos os usuarios', async () => {
@@ -173,7 +185,7 @@ describe('User Controller', () => {
 					id: '1',
 					email: 'user1@example.com',
 					name: 'User 1',
-					role: 'CLIENT',
+					role: UserRole.CLIENT,
 					isActive: true,
 					emailVerified: false,
 					createdAt: new Date(),
@@ -205,7 +217,7 @@ describe('User Controller', () => {
 				id: userId,
 				email: 'test@example.com',
 				name: 'Test User',
-				role: 'CLIENT',
+				role: UserRole.CLIENT,
 				isActive: true,
 				emailVerified: false,
 				createdAt: new Date(),

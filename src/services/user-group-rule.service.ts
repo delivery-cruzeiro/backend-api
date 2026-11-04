@@ -48,7 +48,10 @@ function parseRuleValue(rule: UserGroupRuleDTO, config: UserGroupRuleFieldConfig
 			return date;
 		}
 		case 'enum':
-			if (typeof value !== 'string' || !config.allowedValues?.includes(value)) {
+			if (
+				(typeof value !== 'string' && typeof value !== 'number') ||
+				!config.allowedValues?.includes(value)
+			) {
 				throw new UserGroupRuleValidationError(
 					'O valor informado nao pertence ao enum permitido'
 				);

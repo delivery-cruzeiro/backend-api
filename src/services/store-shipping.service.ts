@@ -376,9 +376,21 @@ export class StoreShippingService {
         storeId: input.storeId,
       },
     });
-    const spatial = input.skipAreas
+    const areaService = new DeliveryAreaService();
+    let spatial = input.skipAreas
       ? null
-      : await new DeliveryAreaService().resolve(input.addressId ? { ...input, ...await new AddressGeocodingService().ensureLocation(input.addressId) } : input);
+      : await areaService.resolve(input);
+    // Undivided neighborhoods do not depend on external geocoding availability.
+    if (spatial && input.addressId) {
+      const location = await new AddressGeocodingService().ensureLocation(input.addressId, {
+        scope: `store:${input.storeId}`,
+        accept: async location => {
+          const candidate = await areaService.resolve({ ...input, ...location });
+          return !!candidate && !candidate.needsLocation;
+        },
+      });
+      spatial = await areaService.resolve({ ...input, ...location });
+    }
     if (spatial?.needsLocation)
       return {
         ...defaultQuote,
@@ -386,7 +398,7 @@ export class StoreShippingService {
         isAvailable: false,
         needsLocation: true,
         message:
-          "Não foi possível localizar o número deste endereço automaticamente. Confira o CEP, a rua e o número ou tente novamente em alguns minutos.",
+          "Não foi possível confirmar automaticamente a região de entrega deste endereço.",
       };
     if (spatial && !spatial.needsLocation && spatial.area.rule) {
       const r = spatial.area.rule;

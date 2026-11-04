@@ -1,3 +1,4 @@
+import { UserRole } from '@delivery-cruzeiro/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
 import {
@@ -6,7 +7,7 @@ import {
 	renderReleaseDockerfile,
 } from '../../src/services/deployment-release.service.js';
 
-const authentication = vi.hoisted(() => ({ role: 'SUPER_ADMIN' as string | null, active: true }));
+const authentication = vi.hoisted(() => ({ role: 4 as number | null, active: true }));
 vi.mock('../../src/lib/auth.js', () => ({
 	auth: {
 		api: {
@@ -64,7 +65,7 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 
 beforeEach(() => {
 	vi.stubEnv('DEPLOYMENT_GITHUB_TOKEN', 'test-secret');
-	authentication.role = 'SUPER_ADMIN';
+	authentication.role = UserRole.SUPER_ADMIN;
 	authentication.active = true;
 });
 afterEach(() => {
@@ -73,7 +74,7 @@ afterEach(() => {
 });
 
 describe('deployment authorization', () => {
-	it.each([null, 'CLIENT', 'MANAGER', 'ADMIN'])(
+	it.each([null, UserRole.CLIENT, UserRole.MANAGER, UserRole.ADMIN])(
 		'denies both endpoints to %s before reaching GitHub',
 		async role => {
 			authentication.role = role;

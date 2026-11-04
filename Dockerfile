@@ -25,6 +25,7 @@ COPY --from=build --chown=node:node /app/package.json ./
 COPY --chown=node:node docker-entrypoint.sh ./
 COPY --chown=node:node scripts/migrate.mjs ./scripts/migrate.mjs
 COPY --chown=node:node scripts/encrypt-existing.mjs ./scripts/encrypt-existing.mjs
+COPY --chown=node:node scripts/import-cnefe.mjs ./scripts/import-cnefe.mjs
 RUN chmod +x docker-entrypoint.sh
 USER node
 EXPOSE 4000

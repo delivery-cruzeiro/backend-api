@@ -1,3 +1,4 @@
+import { saveWithImages, ImageLibraryError } from '../services/system-image.service.js';
 import {
 	createCategorySchema,
 	formatZodError,
@@ -29,6 +30,7 @@ const categorySelect = {
 	name: true,
 	description: true,
 	imageUrl: true,
+	imageUrls: true,
 	order: true,
 	isActive: true,
 	createdAt: true,
@@ -91,6 +93,7 @@ function normalizeCategoryInput(fields: Record<string, unknown>) {
 		}),
 		...(typeof fields.description === 'string' &&
 			fields.description.trim() && { description: fields.description }),
+		...(fields.imageUrls !== undefined && { imageUrls: parseJsonArrayField(fields.imageUrls) ?? fields.imageUrls }),
 		...(typeof fields.imageUrl === 'string' &&
 			fields.imageUrl.trim() && { imageUrl: fields.imageUrl }),
 		...(fields.isActive !== undefined && { isActive: parseBooleanField(fields.isActive) }),
@@ -163,6 +166,7 @@ export const getCategories = async (
 			total: categories.length,
 		});
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao buscar categorias:', error);
 		return reply.status(500).send({
 			error: 'Erro interno do servidor',
@@ -225,24 +229,25 @@ export const createCategory = async (
 				})
 			: validation.data.imageUrl;
 
-		const category = await prisma.category.create({
+		const category = await saveWithImages(validation.data, imageUrl, images => prisma.category.create({
 			data: {
 				additionalFields,
 				name,
 				description,
-				imageUrl,
+				...images,
 				order,
 				isActive,
 				stores: buildStoreConnect(storeIds),
 			},
 			select: categorySelect,
-		});
+		}));
 
 		return reply.status(201).send({
 			message: 'Categoria criada com sucesso',
 			category,
 		});
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao criar categoria:', error);
 		return reply.status(500).send({
 			error: 'Erro interno do servidor',
@@ -278,6 +283,7 @@ export const deleteCategory = async (
 			message: 'Categoria deletada com sucesso',
 		});
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao deletar categoria:', error);
 		return reply.status(500).send({
 			error: 'Erro interno do servidor',
@@ -351,21 +357,22 @@ export const updateCategory = async (
 			: validation.data.imageUrl;
 		const { storeIds, ...categoryData } = validation.data;
 
-		const category = await prisma.category.update({
+		const category = await saveWithImages(validation.data, imageUrl, images => prisma.category.update({
 			where: { id },
 			data: {
 				...categoryData,
 				stores: buildStoreSet(storeIds),
-				...(imageUrl && { imageUrl }),
+				...images,
 			},
 			select: categorySelect,
-		});
+		}));
 
 		return reply.send({
 			message: 'Categoria atualizada com sucesso',
 			category,
 		});
 	} catch (error) {
+    if (error instanceof ImageLibraryError) return reply.status(error.statusCode).send({ error: error.message });
 		console.error('Erro ao atualizar categoria:', error);
 		return reply.status(500).send({
 			error: 'Erro interno do servidor',

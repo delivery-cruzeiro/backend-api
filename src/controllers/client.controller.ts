@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import {
 	PaymentCardType,
 	whatsAppPhoneSchema,
@@ -22,8 +23,10 @@ import type { AuthenticatedRequest } from '../middleware/auth.middleware.js';
 import { prisma } from '../lib/prisma.js';
 import { ClientOrderService } from '../services/client-order.service.js';
 import { CheckoutPixService } from '../services/checkout-pix.service.js';
+import { ClientAddressService, personalAddressWhere } from '../services/client-address.service.js';
 import { getWhatsAppService } from '../integrations/whatsapp/whatsapp.factory.js';
 const checkoutPixService = new CheckoutPixService();
+const clientAddressService = new ClientAddressService();
 
 export const sendClientCheckoutPix = async (request: AuthenticatedRequest, reply: FastifyReply) => {
 	const validation = createClientOrderSchema.safeParse(request.body);
@@ -280,7 +283,7 @@ export const deactivateClientAccount = async (
 
 export const getClientAddresses = async (request: AuthenticatedRequest, reply: FastifyReply) => {
 	const addresses = await prisma.address.findMany({
-		where: { userId: getUserId(request) },
+		where: personalAddressWhere(getUserId(request)),
 		orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
 		select: addressSelect,
 	});
@@ -405,7 +408,7 @@ export const updateClientAddress = async (
 	const existingAddress = await prisma.address.findFirst({
 		where: {
 			id: request.params.id,
-			userId: getUserId(request),
+			...personalAddressWhere(getUserId(request)),
 		},
 		select: {
 			city: true,
@@ -438,7 +441,8 @@ export const updateClientAddress = async (
 
 	const address = await prisma.address.update({
 		where: { id: request.params.id },
-		data: { ...validation.data, zipCodeValidated: true, locationConfirmed: false, latitude: null, longitude: null, geocodingKey: null, geocodingAttemptedAt: null },
+		data: { ...validation.data, zipCodeValidated: true, locationConfirmed: false, latitude: null, longitude: null, geocodingKey: null, geocodingAttemptedAt: null,
+      geocodingSource:null,geocodingSourceVersion:null,geocodingQuality:Prisma.DbNull },
 		select: addressSelect,
 	});
 
@@ -452,21 +456,16 @@ export const deleteClientAddress = async (
 	request: FastifyRequest<{ Params: { id: string } }> & AuthenticatedRequest,
 	reply: FastifyReply
 ) => {
-	const existingAddress = await prisma.address.findFirst({
-		where: {
-			id: request.params.id,
-			userId: getUserId(request),
-		},
-		select: { id: true },
-	});
-
-	if (!existingAddress) {
+	const result = await clientAddressService.remove(getUserId(request), request.params.id);
+	if (result === 'not_found') {
 		return reply.status(404).send({ error: 'Endereco nao encontrado' });
 	}
-
-	await prisma.address.delete({
-		where: { id: request.params.id },
-	});
+	if (result === 'in_use') {
+		return reply.status(409).send({
+			code: 'ADDRESS_IN_USE',
+			error: 'Este endereço está vinculado a uma loja e não pode ser excluído pelo perfil pessoal.',
+		});
+	}
 
 	return reply.send({ message: 'Endereco removido com sucesso' });
 };

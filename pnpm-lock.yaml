@@ -21,8 +21,8 @@ importers:
   .:
     dependencies:
       '@delivery-cruzeiro/types':
-        specifier: file:vendor/delivery-cruzeiro-types-1.4.4.tgz
-        version: file:vendor/delivery-cruzeiro-types-1.4.4.tgz
+        specifier: file:vendor/delivery-cruzeiro-types-1.4.6.tgz
+        version: file:vendor/delivery-cruzeiro-types-1.4.6.tgz
       '@fastify/cors':
         specifier: ^10.0.1
         version: 10.1.0
@@ -53,6 +53,9 @@ importers:
       cloudinary:
         specifier: ^2.10.0
         version: 2.11.0
+      csv-parse:
+        specifier: ^7.0.3
+        version: 7.0.3
       dotenv:
         specifier: ^17.2.3
         version: 17.4.2
@@ -312,9 +315,9 @@ packages:
       conventional-commits-parser:
         optional: true
 
-  '@delivery-cruzeiro/types@file:vendor/delivery-cruzeiro-types-1.4.4.tgz':
-    resolution: {integrity: sha512-MwYnLhonqpNV3zIH2BuY36/gT8cbFYzc8gLdYQD7HiOaxW6zGyB8cQY1iv4KzJSaax7od24eA4iee+m6Bqb74g==, tarball: file:vendor/delivery-cruzeiro-types-1.4.4.tgz}
-    version: 1.4.4
+  '@delivery-cruzeiro/types@file:vendor/delivery-cruzeiro-types-1.4.6.tgz':
+    resolution: {integrity: sha512-mfeP2vnLbdM1lbhzYeJ6+ZdG0aLjxqxlq8GnJARfZAe3sfZOp26wamjx+YDJBYSRCMwlT4Dn0cx33422cJgsKw==, tarball: file:vendor/delivery-cruzeiro-types-1.4.6.tgz}
+    version: 1.4.6
     engines: {node: '>=22.0.0'}
 
   '@electric-sql/pglite-socket@0.1.3':
@@ -1401,6 +1404,9 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  csv-parse@7.0.3:
+    resolution: {integrity: sha512-YFd3QM/yo17vH91L1IOZuvl09zM0zEEtdfTcOCKWcMdM++MNaQSyp09slXyFCLaPXvHstQFx/xC8myiFHSMUvw==}
 
   d3-array@3.2.1:
     resolution: {integrity: sha512-gUY/qeHq/yNqqoCKNq4vtpFLdoCdvyNpWoC/KNjhGbhDuQpAM9sIQQKkXSNpXa9h5KySs/gzm7R88WkUutgwWQ==}
@@ -2980,7 +2986,7 @@ snapshots:
     optionalDependencies:
       conventional-commits-parser: 6.4.0
 
-  '@delivery-cruzeiro/types@file:vendor/delivery-cruzeiro-types-1.4.4.tgz':
+  '@delivery-cruzeiro/types@file:vendor/delivery-cruzeiro-types-1.4.6.tgz':
     dependencies:
       polygon-clipping: 0.15.7
       zod: 4.6.6
@@ -4005,6 +4011,8 @@ snapshots:
       which: 2.0.2
 
   csstype@3.2.3: {}
+
+  csv-parse@7.0.3: {}
 
   d3-array@3.2.1:
     dependencies:

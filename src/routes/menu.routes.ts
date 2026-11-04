@@ -23,6 +23,7 @@ const categorySchema = {
 		name: { type: 'string' },
 		description: { type: 'string', nullable: true },
 		imageUrl: { type: 'string', nullable: true },
+		imageUrls: { type: 'array', items: { type: 'string' } },
 		order: { type: 'number' },
 		isActive: { type: 'boolean' },
 		createdAt: { type: 'string' },

@@ -1,3 +1,4 @@
+import { UserRole } from '@delivery-cruzeiro/types';
 import { securityConfig } from '../security/config.js';
 import { betterAuth } from 'better-auth';
 import { prisma } from './prisma.js';
@@ -27,10 +28,10 @@ export const auth = betterAuth({
 				input: true,
 			},
 			role: {
-				type: 'string',
+				type: 'number',
 				required: false,
 				input: false,
-				defaultValue: 'CLIENT',
+				defaultValue: UserRole.CLIENT,
 				returned: true,
 			},
 			isActive: {
@@ -52,12 +53,17 @@ export const auth = betterAuth({
 		expiresIn: twentyMinutesInSeconds,
 		updateAge: fiveMinutesInSeconds,
 		freshAge: fiveMinutesInSeconds,
-		cookieCache: {enabled:false},
+		cookieCache: { enabled: false },
 	},
 	advanced: {
 		cookiePrefix: 'delivery-cruzeiro',
 		useSecureCookies: config.secureCookies,
-		defaultCookieAttributes: {httpOnly:true, secure:config.secureCookies, sameSite:'lax', path:'/'},
+		defaultCookieAttributes: {
+			httpOnly: true,
+			secure: config.secureCookies,
+			sameSite: 'lax',
+			path: '/',
+		},
 		crossSubDomainCookies: {
 			enabled: false,
 		},

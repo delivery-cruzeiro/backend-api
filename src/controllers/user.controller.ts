@@ -1,3 +1,4 @@
+import { UserRole } from '@delivery-cruzeiro/types';
 import type { CreateUserDTO, UpdateUserDTO } from '@delivery-cruzeiro/types';
 import { hashPassword } from 'better-auth/crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -26,11 +27,11 @@ const publicUserSelect = {
 	stores: storeSummaryListArgs,
 } as const;
 
-function isClientRole(role?: string) {
-	return (role ?? 'CLIENT') === 'CLIENT';
+function isClientRole(role?: number) {
+	return (role ?? UserRole.CLIENT) === UserRole.CLIENT;
 }
 
-async function validateUserStores(role: string | undefined, storeIds?: string[]) {
+async function validateUserStores(role: number | undefined, storeIds?: string[]) {
 	if (isClientRole(role)) {
 		return;
 	}
@@ -43,7 +44,15 @@ export const createUser = async (
 	reply: FastifyReply
 ) => {
 	try {
-		const { email, password, name, phone, cpf, role = 'CLIENT', storeIds } = request.body;
+		const {
+			email,
+			password,
+			name,
+			phone,
+			cpf,
+			role = UserRole.CLIENT,
+			storeIds,
+		} = request.body;
 
 		const existingUser = await prisma.user.findUnique({
 			where: { email },
@@ -114,17 +123,31 @@ export const getUsers = async (request: FastifyRequest, reply: FastifyReply) => 
 			return reply.status(400).send({ error: 'Digite pelo menos 3 dígitos do CPF' });
 		}
 		const where = {
-			...(search && { OR: [
-				{ name: { startsWith: search.replace(/[\\%_]/g, '\\$&'), mode: 'insensitive' as const } },
-				...(/^[\d.\-\s]+$/.test(search) && digits.length >= 3 ? [{ cpf: { startsWith: digits } }] : []),
-			] }),
-			...(query.staff && { role: { not: 'CLIENT' as const } }),
+			...(search && {
+				OR: [
+					{
+						name: {
+							startsWith: search.replace(/[\\%_]/g, '\\$&'),
+							mode: 'insensitive' as const,
+						},
+					},
+					...(/^[\d.\-\s]+$/.test(search) && digits.length >= 3
+						? [{ cpf: { startsWith: digits } }]
+						: []),
+				],
+			}),
+			...(query.staff && { role: { not: UserRole.CLIENT } }),
 		};
 		const users = await prisma.user.findMany({
 			...(search || query.staff ? { where } : {}),
-			...(search ? { take: 20 } : query.staff ? { take: 50, skip: ((query.page ?? 1) - 1) * 50 } : {}),
+			...(search
+				? { take: 20 }
+				: query.staff
+					? { take: 50, skip: ((query.page ?? 1) - 1) * 50 }
+					: {}),
 			select: publicUserSelect,
-			orderBy: search || query.staff ? [{ name: 'asc' }, { id: 'asc' }] : { createdAt: 'desc' },
+			orderBy:
+				search || query.staff ? [{ name: 'asc' }, { id: 'asc' }] : { createdAt: 'desc' },
 		});
 
 		return reply.send({

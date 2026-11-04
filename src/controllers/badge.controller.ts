@@ -1,3 +1,4 @@
+import { UserRole, hasRole } from '@delivery-cruzeiro/types';
 import {
 	createBadgeSchema,
 	formatZodError,
@@ -23,10 +24,7 @@ const badgeSelect = {
 	},
 } as const;
 
-function serializeBadge(badge: {
-	products: Array<{ productId: string }>;
-	[key: string]: unknown;
-}) {
+function serializeBadge(badge: { products: Array<{ productId: string }>; [key: string]: unknown }) {
 	const { products, ...data } = badge;
 	return { ...data, productIds: products.map(product => product.productId) };
 }
@@ -43,11 +41,11 @@ function sendValidationError(
 	});
 }
 
-async function ensureStoreAccess(userId: string, role: string, storeId: string) {
+async function ensureStoreAccess(userId: string, role: number, storeId: string) {
 	const store = await prisma.store.findFirst({
 		where: {
 			id: storeId,
-			...(role !== 'SUPER_ADMIN' && { users: { some: { id: userId } } }),
+			...(!hasRole(role, UserRole.SUPER_ADMIN) && { users: { some: { id: userId } } }),
 		},
 		select: { id: true },
 	});
@@ -60,9 +58,9 @@ async function ensureStoreAccess(userId: string, role: string, storeId: string) 
 function isUniqueConstraintError(error: unknown) {
 	return Boolean(
 		error &&
-			typeof error === 'object' &&
-			'code' in error &&
-			(error as { code?: string }).code === 'P2002'
+		typeof error === 'object' &&
+		'code' in error &&
+		(error as { code?: string }).code === 'P2002'
 	);
 }
 

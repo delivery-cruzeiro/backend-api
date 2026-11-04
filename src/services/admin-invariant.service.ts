@@ -4,10 +4,10 @@ import { prisma } from '../lib/prisma.js';
 
 export const DEFAULT_ADMIN_EMAIL = process.env.DEFAULT_ADMIN_EMAIL || 'admin@admin.com';
 export const DEFAULT_ADMIN_NAME = 'admin';
-export const DEFAULT_ADMIN_PASSWORD = process.env.DEFAULT_ADMIN_PASSWORD ||
+export const DEFAULT_ADMIN_PASSWORD =
+	process.env.DEFAULT_ADMIN_PASSWORD ||
 	(process.env.NODE_ENV === 'production' ? '' : 'admin-password');
 
-const administratorRoles = [UserRole.ADMIN, UserRole.SUPER_ADMIN];
 const credentialProviderId = 'credential';
 
 async function ensureCredentialAccount(userId: string, password: string) {
@@ -59,7 +59,7 @@ export async function ensureDefaultAdminInvariant() {
 			},
 			isActive: true,
 			role: {
-				in: administratorRoles,
+				gte: UserRole.ADMIN,
 			},
 		},
 		select: {

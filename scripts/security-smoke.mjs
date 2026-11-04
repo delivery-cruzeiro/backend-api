@@ -46,11 +46,11 @@ try {
  assert.equal((await request('/health',undefined,undefined,{origin:'https://evil.example'})).status,403);
  assert.equal((await request('/health?access%5Ftoken=unsafe')).status,400);
  assert.equal((await request('/api/auth/sign-in/email',{email:a.email,password})).status,404);
- const mass=await request('/api/auth/register',{email:`mass-${suffix}@example.test`,password,name:'test',role:'SUPER_ADMIN'});
+ const mass=await request('/api/auth/register',{email:`mass-${suffix}@example.test`,password,name:'test',role:4});
  assert.equal(mass.status,400);
  assert.equal((await request('/api/newMatch',{match:'br-no',result:'br(1)-no(0)'})).status,401);
  check('CORS, URL credentials, auth bypass and privileged public writes blocked');
- const asUser=(user,fn)=>databaseIdentity.run({kind:'user',userId:user.id,role:'CLIENT'},fn);
+ const asUser=(user,fn)=>databaseIdentity.run({kind:'user',userId:user.id,role:1},fn);
  const address=await asUser(a,()=>prisma.address.create({data:{userId:a.id,street:'Test',number:'1',neighborhood:'Test',city:'Test',state:'MG',zipCode:'00000000'}}));
  assert.equal(await asUser(a,()=>prisma.address.count({where:{id:address.id}})),1);
  assert.equal(await asUser(b,()=>prisma.address.count({where:{id:address.id}})),0);

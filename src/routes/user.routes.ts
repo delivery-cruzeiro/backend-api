@@ -1,3 +1,4 @@
+import { UserRole } from '@delivery-cruzeiro/types';
 import type { FastifyInstance, RouteHandlerMethod } from 'fastify';
 import { createUserSchema, updateUserSchema } from '@delivery-cruzeiro/types';
 import {
@@ -45,9 +46,9 @@ export async function userRoutes(fastify: FastifyInstance) {
 						phone: { type: 'string', nullable: true },
 						cpf: { type: 'string', maxLength: 14, nullable: true },
 						role: {
-							type: 'string',
-							enum: ['CLIENT', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'],
-							default: 'CLIENT',
+							type: 'integer',
+							minimum: UserRole.CLIENT,
+							default: UserRole.CLIENT,
 						},
 						storeIds: {
 							type: 'array',
@@ -68,7 +69,7 @@ export async function userRoutes(fastify: FastifyInstance) {
 									name: { type: 'string' },
 									phone: { type: 'string', nullable: true },
 									avatar: { type: 'string', nullable: true },
-									role: { type: 'string' },
+									role: { type: 'integer', minimum: 1 },
 									isActive: { type: 'boolean' },
 									emailVerified: { type: 'boolean' },
 									createdAt: { type: 'string' },
@@ -129,7 +130,7 @@ export async function userRoutes(fastify: FastifyInstance) {
 										name: { type: 'string' },
 										phone: { type: 'string', nullable: true },
 										avatar: { type: 'string', nullable: true },
-										role: { type: 'string' },
+										role: { type: 'integer', minimum: 1 },
 										isActive: { type: 'boolean' },
 										emailVerified: { type: 'boolean' },
 										createdAt: { type: 'string' },
@@ -177,7 +178,7 @@ export async function userRoutes(fastify: FastifyInstance) {
 									name: { type: 'string' },
 									phone: { type: 'string', nullable: true },
 									avatar: { type: 'string', nullable: true },
-									role: { type: 'string' },
+									role: { type: 'integer', minimum: 1 },
 									isActive: { type: 'boolean' },
 									emailVerified: { type: 'boolean' },
 									createdAt: { type: 'string' },
@@ -240,8 +241,8 @@ export async function userRoutes(fastify: FastifyInstance) {
 						phone: { type: 'string', nullable: true },
 						cpf: { type: 'string', maxLength: 14, nullable: true },
 						role: {
-							type: 'string',
-							enum: ['CLIENT', 'ADMIN', 'MANAGER', 'SUPER_ADMIN'],
+							type: 'integer',
+							minimum: UserRole.CLIENT,
 						},
 						isActive: { type: 'boolean' },
 						storeIds: {
@@ -263,7 +264,7 @@ export async function userRoutes(fastify: FastifyInstance) {
 									name: { type: 'string' },
 									phone: { type: 'string', nullable: true },
 									avatar: { type: 'string', nullable: true },
-									role: { type: 'string' },
+									role: { type: 'integer', minimum: 1 },
 									isActive: { type: 'boolean' },
 									emailVerified: { type: 'boolean' },
 									createdAt: { type: 'string' },

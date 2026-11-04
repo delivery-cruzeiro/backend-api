@@ -1,3 +1,4 @@
+import { UserRole } from '@delivery-cruzeiro/types';
 import { PrinterConnectionStatus, resolvePrinterReceiptLayout } from '@delivery-cruzeiro/types';
 import { describe, expect, it, vi } from 'vitest';
 import type {
@@ -59,20 +60,50 @@ function repository(overrides: Partial<PrinterConfigurationRepository> = {}) {
 	return { ...base, ...overrides };
 }
 
-const actor = { id: 'user-1', role: 'ADMIN' };
+const actor = { id: 'user-1', role: UserRole.ADMIN };
 
 describe('PrinterConfigurationService', () => {
 	it('saves layout and assignments together and keeps explicit disabled groups', async () => {
 		const repo = repository();
 		const layout = resolvePrinterReceiptLayout({});
-		await new PrinterConfigurationService(repo).setAssignments('printer-1', { categoryIds: ['food'], subcategoryIds: [], receiptSections: [], receiptLayout: layout }, actor);
-		expect(repo.setAssignments).toHaveBeenCalledWith('printer-1', expect.objectContaining({ receiptLayout: expect.objectContaining({ categoriesEnabled: false }), categoryIds: ['food'] }));
+		await new PrinterConfigurationService(repo).setAssignments(
+			'printer-1',
+			{
+				categoryIds: ['food'],
+				subcategoryIds: [],
+				receiptSections: [],
+				receiptLayout: layout,
+			},
+			actor
+		);
+		expect(repo.setAssignments).toHaveBeenCalledWith(
+			'printer-1',
+			expect.objectContaining({
+				receiptLayout: expect.objectContaining({ categoriesEnabled: false }),
+				categoryIds: ['food'],
+			})
+		);
 	});
 	it('keeps legacy assignment calls effective without clearing stored formatting', async () => {
 		const layout = { ...resolvePrinterReceiptLayout({}), feedLines: 9 };
-		const repo = repository({ findById: vi.fn().mockResolvedValue(record({ receiptLayout: layout })) });
-		await new PrinterConfigurationService(repo).setAssignments('printer-1', { categoryIds: ['food'], subcategoryIds: [], receiptSections: [] }, actor);
-		expect(repo.setAssignments).toHaveBeenCalledWith('printer-1', expect.objectContaining({ receiptLayout: expect.objectContaining({ categoriesEnabled: true, orderDataEnabled: false, feedLines: 9 }) }));
+		const repo = repository({
+			findById: vi.fn().mockResolvedValue(record({ receiptLayout: layout })),
+		});
+		await new PrinterConfigurationService(repo).setAssignments(
+			'printer-1',
+			{ categoryIds: ['food'], subcategoryIds: [], receiptSections: [] },
+			actor
+		);
+		expect(repo.setAssignments).toHaveBeenCalledWith(
+			'printer-1',
+			expect.objectContaining({
+				receiptLayout: expect.objectContaining({
+					categoriesEnabled: true,
+					orderDataEnabled: false,
+					feedLines: 9,
+				}),
+			})
+		);
 	});
 	it('define automaticamente a primeira impressora da loja como principal', async () => {
 		const repo = repository();
@@ -129,7 +160,7 @@ describe('persisted Windows configuration', () => {
 		windowsCapabilities: { raw: true },
 		lastSeenAt: new Date('2026-10-03T12:00:00Z'),
 	});
-	it.each(['ADMIN', 'MANAGER', 'SUPER_ADMIN'])(
+	it.each([UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN])(
 		'serializes Windows properties and assignments for %s',
 		async role => {
 			const repo = repository({ list: vi.fn().mockResolvedValue([windows]) });

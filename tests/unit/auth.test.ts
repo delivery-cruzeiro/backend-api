@@ -1,3 +1,4 @@
+import { UserRole } from '@delivery-cruzeiro/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	login,
@@ -11,7 +12,7 @@ import { prisma } from '../../src/lib/prisma.js';
 
 vi.mock('../../src/lib/prisma', () => ({
 	prisma: {
-		session: {deleteMany:vi.fn()},
+		session: { deleteMany: vi.fn() },
 		user: {
 			findUnique: vi.fn(),
 		},
@@ -20,7 +21,7 @@ vi.mock('../../src/lib/prisma', () => ({
 
 vi.mock('../../src/lib/auth', () => ({
 	auth: {
-		api: {getSession:vi.fn()},
+		api: { getSession: vi.fn() },
 		handler: vi.fn(),
 	},
 }));
@@ -31,7 +32,7 @@ const publicUser = {
 	name: 'Test User',
 	phone: '11999999999',
 	avatar: null,
-	role: 'CLIENT',
+	role: UserRole.CLIENT,
 	isActive: true,
 	emailVerified: false,
 	createdAt: new Date(),
@@ -142,7 +143,9 @@ describe('Auth Controller', () => {
 			};
 
 			(prisma.user.findUnique as any).mockResolvedValue(null);
-			(auth.handler as any).mockResolvedValue(authResponse({message:'Internal provider reason'},{status:401}));
+			(auth.handler as any).mockResolvedValue(
+				authResponse({ message: 'Internal provider reason' }, { status: 401 })
+			);
 
 			await login(mockRequest, mockReply);
 
@@ -185,12 +188,16 @@ describe('Auth Controller', () => {
 				id: publicUser.id,
 				isActive: false,
 			});
-			(auth.handler as any).mockResolvedValue(authResponse({user:{id:publicUser.id},token:'revoked-token'}));
+			(auth.handler as any).mockResolvedValue(
+				authResponse({ user: { id: publicUser.id }, token: 'revoked-token' })
+			);
 
 			await login(mockRequest, mockReply);
 
 			expect(auth.handler).toHaveBeenCalled();
-			expect(prisma.session.deleteMany).toHaveBeenCalledWith({where:{token:'revoked-token'}});
+			expect(prisma.session.deleteMany).toHaveBeenCalledWith({
+				where: { token: 'revoked-token' },
+			});
 			expect(mockReply.header).not.toHaveBeenCalled();
 			expect(mockReply.status).toHaveBeenCalledWith(401);
 			expect(mockReply.send).toHaveBeenCalledWith({

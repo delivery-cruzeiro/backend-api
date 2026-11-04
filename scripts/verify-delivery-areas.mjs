@@ -53,7 +53,7 @@ try {
  const blocked = await shipping.resolveShippingQuote(quoteInput); assert.equal(blocked.isAvailable,false); assert.equal(blocked.areaId,a.properties.areaId);
  assert.equal((await shipping.resolveShippingQuote({...quoteInput,locationConfirmed:false})).needsLocation,true);
  assert.equal((await shipping.resolveShippingQuote({...quoteInput,latitude:0,longitude:0})).needsLocation,true);
- await assert.rejects(databaseIdentity.run({kind:'user',userId:'not-a-store-member',role:'MANAGER'},()=>areas.map(store.id)), /acesso/);
+ await assert.rejects(databaseIdentity.run({kind:'user',userId:'not-a-store-member',role:3},()=>areas.map(store.id)), /acesso/);
  const summary = await shipping.getSummary({storeId:store.id}); assert.ok(summary.neighborhoods.some(n=>n.rule?.areaId===a.properties.areaId));
  console.log('Persistence: rollback, replay, conflict, independent rules, blocked quote, missing/outside location, authorization and summary passed');
 } finally { await disconnectPrisma(); }
