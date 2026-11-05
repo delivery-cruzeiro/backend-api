@@ -1,5 +1,6 @@
 import { CnefeGeocodingProvider } from './cnefe-geocoding.provider.js';
 import { nominatimGeocodingProvider } from './nominatim-geocoding.provider.js';
+import { NominatimSuburbGeocodingProvider } from './nominatim-suburb-geocoding.provider.js';
 import type {
 	GeocodingAddress,
 	GeocodingOptions,
@@ -49,4 +50,5 @@ export class FallbackGeocodingProvider implements GeocodingProvider {
 export const addressGeocodingProvider = new FallbackGeocodingProvider([
 	new CnefeGeocodingProvider(),
 	nominatimGeocodingProvider,
+	new NominatimSuburbGeocodingProvider(),
 ]);

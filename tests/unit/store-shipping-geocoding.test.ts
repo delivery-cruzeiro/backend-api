@@ -68,7 +68,7 @@ describe('shipping geocoding dependency', () => {
 		});
 		expect(mocks.resolve).toHaveBeenLastCalledWith({ ...input, ...point });
 	});
-	it('never substitutes the default price when the divided area is unknown', async () => {
+	it('returns the approved default price and review flag when the location is unknown', async () => {
 		mocks.resolve.mockResolvedValue({ needsLocation: true });
 		mocks.ensureLocation.mockResolvedValue({
 			longitude: null,
@@ -76,8 +76,23 @@ describe('shipping geocoding dependency', () => {
 			locationConfirmed: false,
 		});
 		const quote = await new StoreShippingService().resolveShippingQuote(input);
-		expect(quote).toMatchObject({ isAvailable: false, needsLocation: true, value: 0 });
-		expect(quote.message).not.toContain('Confira');
+		expect(quote).toMatchObject({ isAvailable: true, needsLocation: false, value: 8,
+			requiresAddressReview: true, addressReviewReason: 'location_unavailable',
+			areaSnapshot: { requiresAddressReview: true, value: 8 } });
+		expect(quote.areaId).toBeUndefined();
+	});
+	it('does not bypass an explicitly blocked neighborhood during a location failure', async () => {
+		mocks.resolve.mockResolvedValue({ needsLocation: true });
+		mocks.ensureLocation.mockResolvedValue({ locationConfirmed: false });
+		mocks.findMany.mockResolvedValue([{ id: 'blocked', neighborhood: 'Liberdade', areaId: null, isBlocked: true }]);
+		expect(await new StoreShippingService().resolveShippingQuote(input)).toMatchObject({ isAvailable: false, source: 'blocked' });
+	});
+	it('marks an approximated area quote and preserves its configured price', async () => {
+		mocks.resolve.mockResolvedValueOnce({ needsLocation: true }).mockResolvedValue({ needsLocation: false, boundary: false,
+			area: { id: 'two', name: 'Liberdade-2', revisionNumber: 1, rule: { id: 'r', mode: 'MANUAL', value: 12, shippingTime: 40, isBlocked: false } } });
+		mocks.ensureLocation.mockResolvedValue({ latitude: -7.24, longitude: -35.88, locationConfirmed: true, locationApproximate: true });
+		expect(await new StoreShippingService().resolveShippingQuote(input)).toMatchObject({ value: 12, areaId: 'two', requiresAddressReview: true,
+			areaSnapshot: { requiresAddressReview: true, addressReviewReason: 'suburb_fallback' } });
 	});
 	it('preserves administrative skipAreas without an external lookup', async () => {
 		expect(

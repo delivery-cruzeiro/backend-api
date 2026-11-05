@@ -1,4 +1,5 @@
 import { resolveAdditionalFields } from './configurable-fields.service.js';
+import { addressReviewNote } from './address-review.service.js';
 import {
 	OrderStatus,
 	calculateProductPrice,
@@ -231,7 +232,8 @@ export class ClientOrderService {
 				paymentFieldValues: paymentFields.values,
 				discount,
 				items: orderItems,
-				notes: [notes, paymentFields.notes && `Pagamento:\n${paymentFields.notes}`].filter(Boolean).join('\n') || undefined,
+				notes: [notes, paymentFields.notes && `Pagamento:\n${paymentFields.notes}`,
+					addressReviewNote(shippingQuote?.addressReviewReason)].filter(Boolean).join('\n') || undefined,
 				paymentMethodId,
 				paymentType,
 				storePaymentMethodId,

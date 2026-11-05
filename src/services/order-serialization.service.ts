@@ -4,14 +4,17 @@ import {
 	PaymentType,
 	type AdminOrder,
 } from '@delivery-cruzeiro/types';
+import { snapshotRequiresAddressReview } from './address-review.service.js';
 import type {
 	AdminOrderRecord,
 	ClientOrderRecord,
 } from '../repositories/order.repository.js';
 
-export function serializeAdminOrder(order: AdminOrderRecord): AdminOrder {
+export function serializeAdminOrder(order: AdminOrderRecord): AdminOrder & { requiresAddressReview: boolean } {
+	const { deliveryAreaSnapshot, ...record } = order;
 	return {
-		...order,
+		...record,
+		requiresAddressReview: snapshotRequiresAddressReview(deliveryAreaSnapshot),
 		deliveryFee: Number(order.deliveryFee),
  paymentAdditionalValue: Number(order.paymentAdditionalValue ?? 0),
 		discount: Number(order.discount),

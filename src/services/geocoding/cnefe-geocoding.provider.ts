@@ -1,5 +1,6 @@
 import { CnefeGeocodingRepository } from '../../repositories/cnefe-geocoding.repository.js';
 import { normalizeZipCode } from '../via-cep.service.js';
+import { reportGeocodingFailure } from './geocoding-diagnostics.js';
 import {
 	type GeocodingAddress,
 	type GeocodingProvider,
@@ -80,7 +81,8 @@ export class CnefeGeocodingProvider implements GeocodingProvider {
 					spreadMeters: Math.round(spread * 10) / 10,
 				},
 			};
-		} catch {
+		} catch (error) {
+			reportGeocodingFailure('IBGE_CNEFE', 'database', { error });
 			return { status: 'unavailable' };
 		}
 	}

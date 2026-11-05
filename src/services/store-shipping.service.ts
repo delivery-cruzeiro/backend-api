@@ -1,4 +1,5 @@
 import { AddressGeocodingService } from './address-geocoding.service.js';
+import { addressReviewMetadata, type AddressReviewReason } from './address-review.service.js';
 import {
   DeliveryAreaService,
   assertShippingStore,
@@ -29,15 +30,19 @@ type ShippingQuoteInput = {
 };
 
 type ShippingQuote = {
+	 requiresAddressReview?: boolean;
+	 addressReviewReason?: AddressReviewReason;
   needsLocation?: boolean;
   message?: string;
   areaId?: string;
   areaSnapshot?: {
     name: string;
-    revision: number;
+    revision?: number;
     shippingTime: number;
     value: number;
     boundary: boolean;
+    requiresAddressReview?: boolean;
+    addressReviewReason?: AddressReviewReason;
   };
   isAvailable: boolean;
   mode: ShippingChargeMode;
@@ -380,6 +385,8 @@ export class StoreShippingService {
     let spatial = input.skipAreas
       ? null
       : await areaService.resolve(input);
+    let approximateLocation = false;
+    const requiresSpatialResolution = !!spatial;
     // Undivided neighborhoods do not depend on external geocoding availability.
     if (spatial && input.addressId) {
       const location = await new AddressGeocodingService().ensureLocation(input.addressId, {
@@ -389,17 +396,22 @@ export class StoreShippingService {
           return !!candidate && !candidate.needsLocation;
         },
       });
+      approximateLocation = location.locationApproximate === true;
       spatial = await areaService.resolve({ ...input, ...location });
     }
-    if (spatial?.needsLocation)
+    if (spatial?.needsLocation || (requiresSpatialResolution && !spatial)) {
+      const blocked = rules.find(rule => !rule.areaId && rule.isBlocked
+        && normalizeNeighborhoodKey(rule.neighborhood) === normalizeNeighborhoodKey(input.neighborhood!));
+      if (blocked) return { ...defaultQuote, isAvailable: false, source: 'blocked', ruleId: blocked.id };
+      const review = addressReviewMetadata('location_unavailable');
       return {
         ...defaultQuote,
-        value: 0,
-        isAvailable: false,
-        needsLocation: true,
-        message:
-          "Não foi possível confirmar automaticamente a região de entrega deste endereço.",
+        ...review,
+        needsLocation: false,
+        areaSnapshot: { name: input.neighborhood!, value: defaultQuote.value,
+          shippingTime: defaultQuote.shippingTime, boundary: false, ...review },
       };
+    }
     if (spatial && !spatial.needsLocation && spatial.area.rule) {
       const r = spatial.area.rule;
       const value =
@@ -416,6 +428,7 @@ export class StoreShippingService {
             : defaultQuote.shippingTime;
       return {
         ...defaultQuote,
+        ...(approximateLocation ? addressReviewMetadata('suburb_fallback') : {}),
         isAvailable: !r.isBlocked,
         neighborhood: spatial.area.name,
         mode: r.mode as ShippingChargeMode,
@@ -431,6 +444,7 @@ export class StoreShippingService {
         ruleId: r.id,
         areaId: spatial.area.id,
         areaSnapshot: {
+          ...(approximateLocation ? addressReviewMetadata('suburb_fallback') : {}),
           name: spatial.area.name,
           revision: spatial.area.revisionNumber,
           shippingTime,
@@ -438,6 +452,12 @@ export class StoreShippingService {
           boundary: spatial.boundary,
         },
       };
+    }
+    if (approximateLocation && spatial && !spatial.needsLocation) {
+      const review = addressReviewMetadata('suburb_fallback');
+      return { ...defaultQuote, ...review, areaId: spatial.area.id,
+        areaSnapshot: { name: spatial.area.name, revision: spatial.area.revisionNumber,
+          value: defaultQuote.value, shippingTime: defaultQuote.shippingTime, boundary: spatial.boundary, ...review } };
     }
     const normalizedNeighborhood = normalizeNeighborhoodKey(input.neighborhood);
     const rule = rules.find(

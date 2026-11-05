@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { storeSummarySelect } from '../services/catalog-store.utils.js';
 
 export const adminOrderSelect = {
+	deliveryAreaSnapshot: true,
 	orderNumber: true,
 	id: true,
 	userId: true,

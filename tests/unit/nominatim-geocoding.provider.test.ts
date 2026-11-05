@@ -29,6 +29,41 @@ function setup(places: unknown[] = [place]) {
 	return { fetcher, run, provider };
 }
 describe('Nominatim address geocoding', () => {
+	it('uses the first matching suburb only after the precise lookup failed, without repeating HTTP', async () => {
+		const first = { ...place, address: { ...place.address, house_number: undefined, postcode: '58432-570', suburb: 'Serrotão' } };
+		const second = { ...first, lat: '-7.25' };
+		const { provider, fetcher } = setup([first, second]);
+		const input = { ...address, neighborhood: 'serrotao' };
+		expect(await provider.locate(input)).toMatchObject({ status: 'not_found' });
+		expect(await provider.locateSuburb(input)).toMatchObject({ status: 'found', source: 'NOMINATIM_SUBURB', precision: 'suburb', point: { latitude: -7.24, longitude: -35.88 } });
+		expect(fetcher).toHaveBeenCalledTimes(1);
+	});
+	it('expands an empty precise search without postal code or number, through the same queue', async () => {
+		const { provider, fetcher, run } = setup([]);
+		fetcher.mockResolvedValueOnce(new Response('[]')).mockImplementationOnce(async () => new Response(JSON.stringify([
+			{ ...place, address: { ...place.address, house_number: undefined, suburb: 'Liberdade' } },
+		])));
+		await provider.locate(address);
+		expect(await provider.locateSuburb(address)).toMatchObject({ source: 'NOMINATIM_SUBURB' });
+		const url = fetcher.mock.calls[1][0];
+		expect(url.searchParams.get('street')).toBe('Rua Exemplo');
+		expect(url.searchParams.has('postalcode')).toBe(false);
+		expect(run).toHaveBeenCalledTimes(2);
+	});
+	it('does not accept a suburb in another city, invalid coordinates, or a different suburb', async () => {
+		const { provider } = setup([
+			{ ...place, address: { ...place.address, suburb: 'Outro' } },
+			{ ...place, address: { ...place.address, suburb: 'Liberdade', city: 'Outra Cidade' } },
+			{ ...place, lat: '', address: { ...place.address, suburb: 'Liberdade' } },
+		]);
+		expect(await provider.locateSuburb(address)).toEqual({ status: 'not_found' });
+	});
+	it('keeps suburb caches separate across neighborhoods', async () => {
+		const { provider, fetcher } = setup([{ ...place, address: { ...place.address, suburb: 'Liberdade' } }]);
+		expect(await provider.locateSuburb(address)).toMatchObject({ status: 'found' });
+		expect(await provider.locateSuburb({ ...address, neighborhood: 'Serrotão' })).toEqual({ status: 'not_found' });
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
 	it('uses structured street + house number, postal code, Brazil and an identifying User-Agent', async () => {
 		const { provider, fetcher, run } = setup();
 		expect(await provider.locate(address)).toMatchObject({

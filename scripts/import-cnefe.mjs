@@ -54,6 +54,12 @@ try {
 				previous.rows[0].version !== manifest.version)
 		)
 			throw Error('Manifest metadata differs from the immutable dataset');
+		if (previous.rowCount) {
+			const existing = await client.query('SELECT count(*)::integer AS records FROM cnefe_addresses WHERE dataset_id=$1', [previous.rows[0].id]);
+			if (existing.rows[0].records !== previous.rows[0].record_count
+				|| (manifest.expectedRecords && existing.rows[0].records !== manifest.expectedRecords))
+				throw Error('Existing CNEFE dataset is incomplete; no version activated');
+		}
 		let datasetId = previous.rows[0]?.id;
 		let count = previous.rows[0]?.record_count ?? 0,
 			read = 0,

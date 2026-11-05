@@ -21,6 +21,7 @@ export type FoundGeocodingResult = {
 	point: GeocodingPoint;
 	source?: string;
 	sourceVersion?: string;
+	precision?: 'address' | 'suburb';
 	quality?: GeocodingQuality;
 };
 export type GeocodingOptions = {

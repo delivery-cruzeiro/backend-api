@@ -17,12 +17,14 @@ type Location = {
 	longitude: number | null;
 	locationConfirmed: boolean;
 	locationAccuracyMeters?: number;
+	locationApproximate?: boolean;
 };
 type LocationOptions = { scope?: string; accept?: (location: Location) => Promise<boolean> };
 const located = (result: FoundGeocodingResult): Location => ({
 	...result.point,
 	locationConfirmed: true,
 	...(result.quality ? { locationAccuracyMeters: result.quality.uncertaintyMeters } : {}),
+	...(result.precision === 'suburb' ? { locationApproximate: true } : {}),
 });
 function accuracyRadius(value: unknown): number | undefined {
 	if (!value || typeof value !== 'object' || !('uncertaintyMeters' in value)) return undefined;
@@ -58,10 +60,12 @@ export class AddressGeocodingService {
 			)
 			.digest('hex');
 		const cachedRadius = accuracyRadius(address.geocodingQuality);
+		const approximate = address.geocodingSource === 'NOMINATIM_SUBURB';
 		if (
 			address.geocodingKey === key &&
 			address.geocodingAttemptedAt &&
 			((address.locationConfirmed &&
+				(!approximate || Date.now() - address.geocodingAttemptedAt.getTime() < 300000) &&
 				typeof address.latitude === 'number' &&
 				Number.isFinite(address.latitude) &&
 				typeof address.longitude === 'number' &&
@@ -75,6 +79,7 @@ export class AddressGeocodingService {
 				longitude: address.longitude,
 				locationConfirmed: address.locationConfirmed,
 				...(cachedRadius !== undefined ? { locationAccuracyMeters: cachedRadius } : {}),
+				...(approximate ? { locationApproximate: true } : {}),
 			};
 			if (!cached.locationConfirmed || !options?.accept || (await options.accept(cached)))
 				return cached;
@@ -119,8 +124,8 @@ export class AddressGeocodingService {
 					geocodingSourceVersion:
 						result.status === 'found' ? (result.sourceVersion ?? null) : null,
 					geocodingQuality:
-						result.status === 'found' && result.quality
-							? { ...result.quality }
+						result.status === 'found' && (result.quality || result.precision)
+							? { ...result.quality, ...(result.precision ? { precision: result.precision } : {}) }
 							: Prisma.DbNull,
 				},
 			});

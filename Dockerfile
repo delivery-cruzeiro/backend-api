@@ -26,6 +26,8 @@ COPY --chown=node:node docker-entrypoint.sh ./
 COPY --chown=node:node scripts/migrate.mjs ./scripts/migrate.mjs
 COPY --chown=node:node scripts/encrypt-existing.mjs ./scripts/encrypt-existing.mjs
 COPY --chown=node:node scripts/import-cnefe.mjs ./scripts/import-cnefe.mjs
+COPY --chown=node:node scripts/geocoding-readiness.mjs ./scripts/geocoding-readiness.mjs
+COPY --chown=node:node scripts/download-cnefe.py ./scripts/download-cnefe.py
 RUN chmod +x docker-entrypoint.sh
 USER node
 EXPOSE 4000
@@ -36,6 +38,7 @@ CMD ["node", "dist/index.js"]
 FROM build AS verification
 COPY tests ./tests
 COPY scripts/verify.mjs ./scripts/verify.mjs
+COPY scripts/geocoding-readiness.mjs ./scripts/geocoding-readiness.mjs
 RUN node scripts/verify.mjs
 
 FROM production AS final
