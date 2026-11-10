@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 
-export type EmailMessage = { to: string; subject: string; text: string };
+export type EmailMessage = { to: string; subject: string; text: string; html?: string };
 export interface EmailSender {
 	assertConfigured(): void;
 	send(message: EmailMessage): Promise<void>;

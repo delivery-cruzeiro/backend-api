@@ -1,3 +1,4 @@
+import { defaultStoreOperationSettings, storeOperationSettingsSchema, isOperationOpen, isValidScheduledTime, describeStoreHours, storeTimeZone } from '@delivery-cruzeiro/types';
 import { resolveAdditionalFields } from './configurable-fields.service.js';
 import { addressReviewNote } from './address-review.service.js';
 import {
@@ -56,6 +57,13 @@ export class ClientOrderService {
 			};
 		}
 
+        const settings = store.operationSettings ? storeOperationSettingsSchema.parse(store.operationSettings.settings) : defaultStoreOperationSettings;
+        if (dto.scheduledAt && !isValidScheduledTime(settings, dto.scheduledAt)) {
+            return { success: false, statusCode: 400, error: 'Escolha um horário de agendamento futuro dentro do atendimento da loja (até 14 dias).' };
+        }
+        if (!isOperationOpen(settings) && (!settings.acceptScheduled || !dto.scheduledAt)) {
+            return { success: false, statusCode: 409, error: `Loja fechada. ${describeStoreHours(settings)}${settings.acceptScheduled ? '. Selecione um horário para agendamento.' : ''}` };
+        }
 		const address = addressId
 			? await this.orderRepository.findAddressForUser(addressId, userId)
 			: null;
@@ -224,6 +232,8 @@ export class ClientOrderService {
 		return {
 			success: true,
 			data: {
+                scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : undefined,
+                autoAcceptAt: settings.autoAccept ? new Date(Date.now() + settings.acceptDelaySeconds * 1000) : undefined,
 				addressId: addressId || store.addressId,
  deliveryAreaId: shippingQuote?.areaId, deliveryAreaSnapshot: shippingQuote?.areaSnapshot,
 				deliveryFee,
@@ -232,7 +242,7 @@ export class ClientOrderService {
 				paymentFieldValues: paymentFields.values,
 				discount,
 				items: orderItems,
-				notes: [notes, paymentFields.notes && `Pagamento:\n${paymentFields.notes}`,
+				notes: [dto.scheduledAt && `Pedido agendado para ${new Date(dto.scheduledAt).toLocaleString('pt-BR', { timeZone: storeTimeZone })}`, notes, paymentFields.notes && `Pagamento:\n${paymentFields.notes}`,
 					addressReviewNote(shippingQuote?.addressReviewReason)].filter(Boolean).join('\n') || undefined,
 				paymentMethodId,
 				paymentType,

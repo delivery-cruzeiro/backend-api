@@ -36,6 +36,7 @@ model User {
   reviews          Review[]
   favorites        Favorite[]
   groupMemberships UserGroupMember[]
+  emailConfirmation EmailConfirmation?
   ownedStores      Store[]           @relation("StoreOwner")
   stores           Store[]           @relation("UserStores")
   createdCarousels Carousel[]        @relation("CarouselCreator")
@@ -111,6 +112,16 @@ model LoginAttempt {
 }
 
 // Temporary secrets are HMAC digests; no email code is stored in plaintext.
+model EmailConfirmation {
+  userId         String    @id
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash       String?   @unique
+  emailHash      String?
+  expiresAt      DateTime?
+  lastSentAt     DateTime?
+  previousSentAt DateTime?
+}
+
 model PasswordRecovery {
   key               String   @id
   userId            String
@@ -211,6 +222,7 @@ model CnefeAddress {
 }
 
 model Store {
+  operationSettings StoreOperationSettings?
   id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name         String
   nickname     String
@@ -634,6 +646,8 @@ model ProductBadge {
 // ============================================
 
 model Order {
+  scheduledAt DateTime? @map("scheduled_at")
+  autoAcceptAt DateTime? @map("auto_accept_at")
   confirmedAt DateTime? @map("confirmed_at")
   deliveryMinutes Int? @map("delivery_minutes")
   paymentAdditionalValue Decimal @default(0) @map("payment_additional_value") @db.Decimal(10, 2)
@@ -674,6 +688,7 @@ model Order {
   @@index([userId])
   @@index([storeId])
   @@index([status])
+  @@index([status, autoAcceptAt], map: "Order_status_autoAcceptAt_idx")
   @@index([createdAt])
   @@index([promotionId])
 }
@@ -1139,3 +1154,11 @@ model DeliveryArea {
 }
 
 
+
+model StoreOperationSettings {
+  storeId String @id @map("store_id") @db.Uuid
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  settings Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@map("store_operation_settings")
+}

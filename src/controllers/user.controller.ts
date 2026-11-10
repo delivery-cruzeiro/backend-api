@@ -1,8 +1,9 @@
 import { UserRole } from '@delivery-cruzeiro/types';
-import type { CreateUserDTO, UpdateUserDTO } from '@delivery-cruzeiro/types';
+import type { AdminCustomerSearchDTO, CreateUserDTO, UpdateUserDTO } from '@delivery-cruzeiro/types';
 import { hashPassword } from 'better-auth/crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { prisma } from '../lib/prisma.js';
+import { searchAdminCustomers } from '../services/admin-customer.service.js';
 import { ensureDefaultAdminInvariant } from '../services/admin-invariant.service.js';
 import {
 	buildStoreConnect,
@@ -109,6 +110,13 @@ export const createUser = async (
 			error: 'Erro interno do servidor',
 		});
 	}
+};
+
+export const searchCustomers = async (
+	request: FastifyRequest<{ Body: AdminCustomerSearchDTO }>,
+	reply: FastifyReply
+) => {
+	return reply.header('Cache-Control', 'no-store').send(await searchAdminCustomers(request.body));
 };
 
 export const getUsers = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -271,7 +279,7 @@ export const updateUser = async (
 		const user = await prisma.user.update({
 			where: { id },
 			data: {
-				...(email && { email }),
+				...(email && email !== existingUser.email && { email, emailVerified: false }),
 				...(name && { name }),
 				...(phone !== undefined && { phone }),
 				...(cpf !== undefined && { cpf }),

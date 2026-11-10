@@ -4,9 +4,34 @@ import { register, login, logout, getMe, refreshToken } from '../controllers/aut
 import { limitLogin } from '../security/login-limit.js';
 import { passwordRecoveryRoutes } from './password-recovery.routes.js';
 import { validateZod } from '../middleware/validate-zod.middleware.js';
+import { authenticate, type AuthenticatedRequest } from '../middleware/auth.middleware.js';
+import { emailConfirmation, EmailConfirmationError } from '../services/email-confirmation.service.js';
 
 export async function authRoutes(fastify: FastifyInstance) {
 	await fastify.register(passwordRecoveryRoutes);
+	fastify.addHook('onClose', () => emailConfirmation.waitForDeliveries());
+	fastify.post<{ Body: { code: string } }>('/auth/email-confirmation/confirm', {
+		config: { rateLimit: { max: 30, timeWindow: '15 minutes' } },
+		schema: { body: { type: 'object', required: ['code'], additionalProperties: false,
+			properties: { code: { type: 'string', pattern: '^[a-f0-9]{64}$' } } } },
+	}, async (request, reply) => {
+		if (!(await emailConfirmation.confirm(request.body.code))) {
+			return reply.code(400).send({ error: 'Link inválido ou expirado. Solicite um novo e-mail no seu perfil.' });
+		}
+		return reply.send({ message: 'E-mail confirmado com sucesso.' });
+	});
+	fastify.post('/auth/email-confirmation/resend', {
+		preHandler: authenticate,
+		config: { rateLimit: { max: 20, timeWindow: '15 minutes' } },
+	}, async (request: AuthenticatedRequest, reply) => {
+		try {
+			return reply.send({ message: await emailConfirmation.send(request.user!.id) });
+		} catch (error) {
+			if (!(error instanceof EmailConfirmationError)) throw error;
+			if (error.retryAfter) reply.header('Retry-After', error.retryAfter);
+			return reply.code(error.statusCode).send({ error: error.message });
+		}
+	});
 	// Registro de usuário (rota customizada)
 	fastify.post(
 		'/auth/register',
@@ -38,6 +63,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 									id: { type: 'string' },
 									email: { type: 'string' },
 									name: { type: 'string' },
+									gender: { type: 'string', nullable: true },
 									phone: { type: 'string', nullable: true },
 									avatar: { type: 'string', nullable: true },
 									role: { type: 'integer', minimum: 1 },
@@ -88,6 +114,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 									id: { type: 'string' },
 									email: { type: 'string' },
 									name: { type: 'string' },
+									gender: { type: 'string', nullable: true },
 									phone: { type: 'string', nullable: true },
 									avatar: { type: 'string', nullable: true },
 									role: { type: 'integer', minimum: 1 },
@@ -155,6 +182,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 									id: { type: 'string' },
 									email: { type: 'string' },
 									name: { type: 'string' },
+									gender: { type: 'string', nullable: true },
 									phone: { type: 'string', nullable: true },
 									avatar: { type: 'string', nullable: true },
 									role: { type: 'integer', minimum: 1 },
@@ -196,6 +224,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 									id: { type: 'string' },
 									email: { type: 'string' },
 									name: { type: 'string' },
+									gender: { type: 'string', nullable: true },
 									phone: { type: 'string', nullable: true },
 									avatar: { type: 'string', nullable: true },
 									role: { type: 'integer', minimum: 1 },

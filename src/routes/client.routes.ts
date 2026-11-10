@@ -7,6 +7,7 @@ import {
 	deactivateClientAccount,
 	deleteClientAddress,
 	getClientAddresses,
+	getClientCheckoutEligibility,
 	getClientAddressByZipCode,
 	getClientOrderById,
 	getClientOrderContact,
@@ -43,6 +44,7 @@ export async function clientRoutes(fastify: FastifyInstance) {
 	fastify.get('/client/profile', getClientProfile);
 	fastify.patch('/client/profile/phone', updateClientPhone);
 	fastify.post('/client/checkout/pix', sendClientCheckoutPix);
+	fastify.get('/client/checkout/eligibility', getClientCheckoutEligibility);
 	fastify.put('/client/profile', updateClientProfileHandler);
 	fastify.delete('/client/profile', deactivateClientAccount);
 

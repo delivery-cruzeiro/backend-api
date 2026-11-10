@@ -1,3 +1,5 @@
+import { storeOperationRoutes } from './routes/store-operation.routes.js';
+import { startOrderAutoAcceptance } from './services/order-auto-acceptance.service.js';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -118,7 +120,9 @@ const startServer = async () => {
 			});
 		});
 
-		fastify.addHook('onClose', async () => {
+		const stopAutoAcceptance = startOrderAutoAcceptance(error => fastify.log.error(error));
+        fastify.addHook('onClose', async () => {
+            stopAutoAcceptance();
 			unsubscribeWhatsAppAutomation();
 			await socketGateway.close();
 			await closeNominatimQueue();
@@ -158,6 +162,7 @@ const startServer = async () => {
 		await fastify.register(promotionRoutes, { prefix: '/api' });
 		await fastify.register(storeShippingRoutes, { prefix: '/api' });
 		await fastify.register(storeRoutes, { prefix: '/api' });
+        await fastify.register(storeOperationRoutes, { prefix: '/api' });
 		await fastify.register(storePaymentMethodRoutes, { prefix: '/api' });
 		await fastify.register(subcategoryRoutes, { prefix: '/api' });
 		await fastify.register(userGroupRoutes, { prefix: '/api' });

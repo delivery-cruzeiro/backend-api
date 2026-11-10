@@ -2,6 +2,7 @@ import {
 	OrderStatus,
 	UserGender,
 	UserGroupRuleOperator,
+	UserGroupRulePreset,
 	UserGroupRuleSource,
 	UserRole,
 	type UserGroupItemRuleField,
@@ -80,7 +81,16 @@ export const USER_GROUP_RULE_ALLOWLIST = {
 	[UserGroupRuleSource.USER]: userFields,
 	[UserGroupRuleSource.ORDER]: orderFields,
 	[UserGroupRuleSource.ITEM]: itemFields,
+	[UserGroupRuleSource.PRESET]: {},
 } as const;
+
+export const USER_GROUP_RULE_PRESETS = {
+	[UserGroupRulePreset.FIRST_ORDER]: { label: 'Primeiro pedido', orderCount: 0 },
+	[UserGroupRulePreset.REGULAR_CUSTOMER_10_ORDERS]: {
+		label: 'Cliente da casa - 10 pedidos',
+		orderCount: 10,
+	},
+} satisfies Record<UserGroupRulePreset, { label: string; orderCount: number }>;
 
 export function getUserGroupRuleFieldConfig(
 	source: UserGroupRuleSource,

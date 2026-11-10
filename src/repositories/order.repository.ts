@@ -1,9 +1,12 @@
-import { OrderStatus, type PaymentType, type AdminOrderHistoryQueryDTO } from '@delivery-cruzeiro/types';
+import { OrderStatus, UserRole, type PaymentType, type AdminOrderHistoryQueryDTO } from '@delivery-cruzeiro/types';
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { brasiliaDateRange } from '../lib/brasilia-date-range.js';
 import { prisma } from '../lib/prisma.js';
 import { storeSummarySelect } from '../services/catalog-store.utils.js';
+import { assertCheckoutEligibility } from '../services/client-checkout-eligibility.js';
 
 export const adminOrderSelect = {
+ scheduledAt: true,
 	deliveryAreaSnapshot: true,
 	orderNumber: true,
 	id: true,
@@ -91,6 +94,7 @@ export const adminOrderSelect = {
 } satisfies Prisma.OrderSelect;
 
 export const clientOrderSelect = {
+ scheduledAt: true,
 	orderNumber: true,
 	id: true,
 	userId: true,
@@ -196,6 +200,7 @@ export interface AdminOrderRepository {
 
 export interface ClientOrderRepository {
 	createClientOrder(input: {
+ scheduledAt?: Date; autoAcceptAt?: Date;
 		addressId: string | null;
 		deliveryFee: number;
  deliveryMinutes?: number; paymentAdditionalValue?: number; paymentFieldValues?: Prisma.InputJsonValue;
@@ -228,7 +233,7 @@ export interface ClientOrderRepository {
 			subcategory: { additionalFields: Prisma.JsonValue; id: string } | null;
 		}>
 	>;
-	findActiveStoreById(id: string): Promise<{ addressId: string; id: string } | null>;
+	findActiveStoreById(id: string): Promise<{ addressId: string; id: string; operationSettings?: { settings: Prisma.JsonValue } | null } | null>;
 	findAddressForUser(
 		id: string,
 		userId: string
@@ -247,19 +252,21 @@ export class PrismaAdminOrderRepository implements AdminOrderRepository {
 	constructor(private readonly database: PrismaClient = prisma) {}
 
 	async findHistory(query: AdminOrderHistoryQueryDTO) {
-		// Date filters cover complete calendar days in the store's Brasília timezone.
+		const user = query.customerId || query.customerName ? {
+			...(query.customerId && { role: UserRole.CLIENT }),
+			...(query.customerName && { name: { contains: query.customerName, mode: 'insensitive' as const } }),
+		} : undefined;
+		const createdAt = brasiliaDateRange(query.startDate, query.endDate);
 		const where: Prisma.OrderWhereInput = {
 			...(query.storeId && { storeId: query.storeId }),
+			...(query.customerId && { userId: query.customerId }),
 			...(query.status && query.status !== 'ALL' && { status: query.status }),
-			...(query.customerName && { user: { name: { contains: query.customerName, mode: 'insensitive' } } }),
+			...(user && { user }),
 			...(query.orderNumber !== undefined && { orderNumber: query.orderNumber }),
 			...((query.minTotal !== undefined || query.maxTotal !== undefined) && {
 				total: { gte: query.minTotal, lte: query.maxTotal },
 			}),
-			...((query.startDate || query.endDate) && { createdAt: {
-				...(query.startDate && { gte: new Date(`${query.startDate}T00:00:00-03:00`) }),
-				...(query.endDate && { lt: new Date(new Date(`${query.endDate}T00:00:00-03:00`).getTime() + 86400000) }),
-			} }),
+			...(createdAt && { createdAt }),
 		};
 		return this.database.$transaction(async database => {
 			const total = await database.order.count({ where });
@@ -299,7 +306,7 @@ export class PrismaAdminOrderRepository implements AdminOrderRepository {
 	async updateStatus(id: string, status: OrderStatus) {
 		const existingOrder = await this.database.order.findUnique({
 			where: { id },
-			select: { id: true, confirmedAt: true, deliveryMinutes: true, estimatedDelivery: true },
+			select: { id: true, scheduledAt: true, confirmedAt: true, deliveryMinutes: true, estimatedDelivery: true },
 		});
 
 		if (!existingOrder) {
@@ -311,8 +318,8 @@ export class PrismaAdminOrderRepository implements AdminOrderRepository {
 			data: {
 				...(status === OrderStatus.CONFIRMED && !existingOrder.confirmedAt && {
 					confirmedAt: new Date(),
-					estimatedDelivery: existingOrder.deliveryMinutes && existingOrder.deliveryMinutes > 0
-						? new Date(Date.now() + existingOrder.deliveryMinutes * 60000) : existingOrder.estimatedDelivery,
+					estimatedDelivery: existingOrder.scheduledAt ?? (existingOrder.deliveryMinutes && existingOrder.deliveryMinutes > 0
+						? new Date(Date.now() + existingOrder.deliveryMinutes * 60000) : existingOrder.estimatedDelivery),
 				}),
 				deliveredAt: status === OrderStatus.DELIVERED ? new Date() : null,
 				status,
@@ -326,6 +333,7 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 	constructor(private readonly database: PrismaClient = prisma) {}
 
 	async createClientOrder(input: {
+ scheduledAt?: Date; autoAcceptAt?: Date;
 		addressId: string | null;
 		deliveryFee: number;
  deliveryMinutes?: number; paymentAdditionalValue?: number; paymentFieldValues?: Prisma.InputJsonValue;
@@ -343,9 +351,17 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 		total: number;
 		userId: string;
 	}) {
-		return this.database.order.create({
+		return this.database.$transaction(async tx => {
+			// Concurrent unverified checkouts serialize on the same user before checking order history.
+			await tx.user.updateMany({
+				where: { id: input.userId, emailVerified: false },
+				data: { emailVerified: false },
+			});
+			await assertCheckoutEligibility(tx, input.userId, Boolean(input.promotionId));
+			return tx.order.create({
 			data: {
 				addressId: input.addressId,
+ scheduledAt: input.scheduledAt, autoAcceptAt: input.autoAcceptAt,
 				deliveryFee: input.deliveryFee,
  deliveryMinutes: input.deliveryMinutes, paymentAdditionalValue: input.paymentAdditionalValue, paymentFieldValues: input.paymentFieldValues,
  deliveryAreaId: input.deliveryAreaId, deliveryAreaSnapshot: input.deliveryAreaSnapshot,
@@ -367,7 +383,8 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 				userId: input.userId,
 			},
 			select: clientOrderSelect,
-		}) as Promise<ClientOrderRecord>;
+			}) as Promise<ClientOrderRecord>;
+		});
 	}
 
 	async findActivePaymentMethodForUser(id: string, userId: string) {
@@ -413,7 +430,8 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 				isActive: true,
 			},
 			select: {
-				addressId: true,
+				operationSettings: { select: { settings: true } },
+ addressId: true,
 				id: true,
 			},
 		});

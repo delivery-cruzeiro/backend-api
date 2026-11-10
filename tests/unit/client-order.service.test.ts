@@ -1,4 +1,4 @@
-import { OrderStatus, PaymentType } from '@delivery-cruzeiro/types';
+import { defaultStoreOperationSettings, OrderStatus, PaymentType } from '@delivery-cruzeiro/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OrderChangeEventPublisher } from '../../src/events/order-events.emitter.js';
 import { ClientOrderService } from '../../src/services/client-order.service.js';
@@ -88,6 +88,24 @@ describe('ClientOrderService', () => {
 			findAdminOrderById: vi.fn(),
 		};
 	});
+
+    it('blocks orders when manually closed and scheduling is disabled', async () => {
+        vi.mocked(repository.findActiveStoreById).mockResolvedValue({ id: 'store-1', addressId: 'address-1', operationSettings: { settings: { ...defaultStoreOperationSettings, hoursEnabled: true, manualControl: true, manuallyOpen: false } } });
+        const result = await new ClientOrderService(repository, orderEvents).prepareOrder('user-1', { storeId: 'store-1', paymentType: PaymentType.CASH, items: [{ productId: 'product-1', quantity: 1 }] });
+        expect(result).toMatchObject({ success: false, statusCode: 409 });
+        expect(repository.createClientOrder).not.toHaveBeenCalled();
+    });
+
+    it.each([0, 2, 5, 10] as const)('persists the %i second acceptance deadline and scheduled time independently', async delay => {
+        const now = new Date('2026-11-09T12:00:00Z');
+        vi.useFakeTimers(); vi.setSystemTime(now);
+        try {
+            vi.mocked(repository.findActiveStoreById).mockResolvedValue({ id: 'store-1', addressId: 'address-1', operationSettings: { settings: { ...defaultStoreOperationSettings, autoAccept: true, acceptDelaySeconds: delay, hoursEnabled: true, acceptScheduled: true } } });
+            vi.mocked(repository.findActiveProductsByIds).mockResolvedValue([{ id: 'product-1', price: 10, additionalFields: [], category: { id: 'category-1', additionalFields: [] }, subcategory: null }]);
+            const result = await new ClientOrderService(repository, orderEvents).prepareOrder('user-1', { storeId: 'store-1', paymentType: PaymentType.CASH, scheduledAt: '2026-11-09T22:00:00Z', items: [{ productId: 'product-1', quantity: 1 }] });
+            expect(result).toMatchObject({ success: true, data: { status: OrderStatus.PENDING, autoAcceptAt: new Date(now.getTime() + delay * 1000), scheduledAt: new Date('2026-11-09T22:00:00Z'), notes: expect.stringContaining('Pedido agendado') } });
+        } finally { vi.useRealTimers(); }
+    });
 
 	it.each([['ADDITIVE', 15, 15], ['ADDITIVE', 10, 10], ['FIXED', 15, 25]])('calculates %s prices using authoritative additions %s', async (pricingMode, addition, expected) => {
 		vi.mocked(repository.findActiveStoreById).mockResolvedValue({ addressId: 'address-1', id: 'store-1' });

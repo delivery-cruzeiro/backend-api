@@ -25,16 +25,31 @@ import { ClientOrderService } from '../services/client-order.service.js';
 import { CheckoutPixService } from '../services/checkout-pix.service.js';
 import { ClientAddressService, personalAddressWhere } from '../services/client-address.service.js';
 import { getWhatsAppService } from '../integrations/whatsapp/whatsapp.factory.js';
+import { assertCheckoutEligibility, CheckoutEmailConfirmationRequired, getCheckoutEligibility } from '../services/client-checkout-eligibility.js';
 const checkoutPixService = new CheckoutPixService();
 const clientAddressService = new ClientAddressService();
 
 export const sendClientCheckoutPix = async (request: AuthenticatedRequest, reply: FastifyReply) => {
 	const validation = createClientOrderSchema.safeParse(request.body);
 	if (!validation.success) return reply.status(400).send({ error: 'Dados do pedido inválidos.' });
-	const result = await checkoutPixService.send(request.user!.id, validation.data);
-	if ('error' in result) return reply.status(result.statusCode ?? 400).send(result);
-	return reply.send(result);
+	const userId = getUserId(request);
+	try {
+		await assertCheckoutEligibility(prisma, userId, Boolean(validation.data.promotionId));
+		const result = await checkoutPixService.send(userId, validation.data);
+		if ('error' in result) return reply.status(result.statusCode ?? 400).send(result);
+		return reply.send(result);
+	} catch (error) {
+		return sendCheckoutError(reply, error);
+	}
 };
+
+function sendCheckoutError(reply: FastifyReply, error: unknown) {
+	if (!(error instanceof CheckoutEmailConfirmationRequired)) throw error;
+	return reply.code(403).send({ error: error.message, code: error.code });
+}
+
+export const getClientCheckoutEligibility = async (request: AuthenticatedRequest, reply: FastifyReply) =>
+	reply.send(await getCheckoutEligibility(getUserId(request)));
 
 export const updateClientPhone = async (request: AuthenticatedRequest, reply: FastifyReply) => {
 	const validation = whatsAppPhoneSchema.safeParse((request.body as { phone?: unknown })?.phone);
@@ -534,16 +549,13 @@ export const createClientOrder = async (
 	}
 
 	const userId = getUserId(request);
-	const result = await clientOrderService.createOrder(userId, validation.data);
-
-	if (!result.success) {
-		return reply.status(result.statusCode).send({ error: result.error });
+	try {
+		const result = await clientOrderService.createOrder(userId, validation.data);
+		if (!result.success) return reply.status(result.statusCode).send({ error: result.error });
+		return reply.status(201).send({ message: 'Pedido criado com sucesso', order: result.order });
+	} catch (error) {
+		return sendCheckoutError(reply, error);
 	}
-
-	return reply.status(201).send({
-		message: 'Pedido criado com sucesso',
-		order: result.order,
-	});
 };
 
 export const getClientShippingQuote = async (
@@ -614,11 +626,14 @@ export const applyClientPromotionCoupon = async (
 		});
 	}
 
+	const userId = getUserId(request);
+	const { emailVerified } = await getCheckoutEligibility(userId);
+	if (!emailVerified) return sendCheckoutError(reply, new CheckoutEmailConfirmationRequired('coupon'));
 	const result = await promotionCouponService.validateCouponForUser({
 		code: validation.data.code,
 		storeId: validation.data.storeId,
 		subtotal: validation.data.subtotal,
-		userId: getUserId(request),
+		userId,
 	});
 
 	if (!result.success) {

@@ -1,17 +1,24 @@
 import {
 	UserGroupLogicalOperator,
 	UserGroupRuleOperator,
+	UserGroupRulePreset,
 	UserGroupRuleSource,
+	UserRole,
 	type UserGroupRuleDTO,
 } from '@delivery-cruzeiro/types';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { prisma } from '../../src/lib/prisma.js';
 import {
 	buildUserGroupRuleWhere,
 	UserGroupRuleValidationError,
 } from '../../src/services/user-group-rule.service.js';
 
+vi.mock('../../src/lib/prisma.js', () => ({
+	prisma: { order: { groupBy: vi.fn() } },
+}));
+
 describe('user group rule service', () => {
-	it('groups order and item AND rules under the same order relationship', () => {
+	it('groups order and item AND rules under the same order relationship', async () => {
 		const rules: UserGroupRuleDTO[] = [
 			{
 				field: 'gender',
@@ -42,7 +49,7 @@ describe('user group rule service', () => {
 			},
 		];
 
-		expect(buildUserGroupRuleWhere(rules)).toEqual({
+		await expect(buildUserGroupRuleWhere(rules)).resolves.toEqual({
 			AND: [
 				{ gender: { equals: 'MALE' } },
 				{
@@ -60,7 +67,7 @@ describe('user group rule service', () => {
 		});
 	});
 
-	it('uses explicit OR groups with AND precedence', () => {
+	it('uses explicit OR groups with AND precedence', async () => {
 		const rules: UserGroupRuleDTO[] = [
 			{
 				field: 'name',
@@ -84,12 +91,12 @@ describe('user group rule service', () => {
 			},
 		];
 
-		const where = buildUserGroupRuleWhere(rules);
+		const where = await buildUserGroupRuleWhere(rules);
 		expect(where).toHaveProperty('OR');
 		expect(where).not.toHaveProperty('items');
 	});
 
-	it('rejects operators that are not allowed for a field', () => {
+	it('rejects operators that are not allowed for a field', async () => {
 		const rules: UserGroupRuleDTO[] = [
 			{
 				field: 'name',
@@ -99,6 +106,37 @@ describe('user group rule service', () => {
 			},
 		];
 
-		expect(() => buildUserGroupRuleWhere(rules)).toThrow(UserGroupRuleValidationError);
+		await expect(buildUserGroupRuleWhere(rules)).rejects.toThrow(UserGroupRuleValidationError);
+	});
+
+	it('matches clients with no orders or exactly ten registered orders', async () => {
+		const groupOrders = vi.mocked(prisma.order.groupBy);
+		groupOrders.mockResolvedValueOnce([{ userId: 'customer-with-ten-orders' }]);
+		const where = await buildUserGroupRuleWhere([
+			{
+				field: 'preset',
+				operator: UserGroupRuleOperator.EQUAL,
+				source: UserGroupRuleSource.PRESET,
+				value: UserGroupRulePreset.FIRST_ORDER,
+			},
+			{
+				field: 'preset',
+				logicalOperator: UserGroupLogicalOperator.OR,
+				operator: UserGroupRuleOperator.EQUAL,
+				source: UserGroupRuleSource.PRESET,
+				value: UserGroupRulePreset.REGULAR_CUSTOMER_10_ORDERS,
+			},
+		]);
+		expect(groupOrders).toHaveBeenCalledExactlyOnceWith({
+			by: ['userId'],
+			where: { user: { role: UserRole.CLIENT } },
+			having: { userId: { _count: { equals: 10 } } },
+		});
+		expect(where).toEqual({
+			OR: [
+				{ AND: [{ role: UserRole.CLIENT, orders: { none: {} } }] },
+				{ AND: [{ role: UserRole.CLIENT, id: { in: ['customer-with-ten-orders'] } }] },
+			],
+		});
 	});
 });

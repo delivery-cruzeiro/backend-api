@@ -3,6 +3,7 @@ import type { LoginUserDTO, RegisterUserDTO } from '@delivery-cruzeiro/types';
 import { auth } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
 import { sessionEvents } from '../security/session-events.js';
+import { emailConfirmation } from '../services/email-confirmation.service.js';
 
 type AuthEndpointOptions = {
 	method?: 'GET' | 'POST';
@@ -174,6 +175,11 @@ export const register = async (
 		}
 
 		const user = await findPublicUser(getSessionUserId(payload), email);
+		if (user && !user.emailVerified) {
+			emailConfirmation.sendOnRegistration(user.id, () => {
+				request.log.warn('Não foi possível enviar o e-mail de confirmação no cadastro');
+			});
+		}
 
 		return reply.status(201).send({
 			message: 'Usuario criado com sucesso',

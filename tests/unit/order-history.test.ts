@@ -22,4 +22,15 @@ describe('order history repository', () => {
     await repository.findHistory({ page: 1, pageSize: 10 });
     expect(count).toHaveBeenCalledWith({ where: {} });
   });
+  it('scopes a customer history to the exact client without narrowing to a store or status', async () => {
+    const order = { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([]) };
+    const repository = new PrismaAdminOrderRepository({ $transaction: async callback => callback({ order }) } as never);
+
+    await repository.findHistory({ page: 1, pageSize: 10, customerId: 'customer-1' });
+
+    expect(order.count).toHaveBeenCalledWith({ where: { userId: 'customer-1', user: { role: 1 } } });
+    expect(order.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 'customer-1', user: { role: 1 } }, skip: 0, take: 10,
+    }));
+  });
 });

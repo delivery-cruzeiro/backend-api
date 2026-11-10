@@ -1,4 +1,4 @@
-import { UserRole } from '@delivery-cruzeiro/types';
+import { adminCustomerSearchSchema, UserRole, type AdminCustomerSearchDTO } from '@delivery-cruzeiro/types';
 import type { FastifyInstance, RouteHandlerMethod } from 'fastify';
 import { createUserSchema, updateUserSchema } from '@delivery-cruzeiro/types';
 import {
@@ -6,9 +6,10 @@ import {
 	deleteUser,
 	getUserById,
 	getUsers,
+	searchCustomers,
 	updateUser,
 } from '../controllers/user.controller.js';
-import { requireAdmin } from '../middleware/auth.middleware.js';
+import { requireAdmin, requireManager } from '../middleware/auth.middleware.js';
 import { validateZod } from '../middleware/validate-zod.middleware.js';
 
 const createUserHandler = createUser as unknown as RouteHandlerMethod;
@@ -27,6 +28,12 @@ const storeSummarySchema = {
 };
 
 export async function userRoutes(fastify: FastifyInstance) {
+	fastify.post<{ Body: AdminCustomerSearchDTO }>(
+		'/admin/customers/search',
+		{ preHandler: [requireManager, validateZod(adminCustomerSearchSchema)] },
+		searchCustomers
+	);
+
 	// Criar novo usuário (rota solicitada)
 	fastify.post(
 		'/new-user',

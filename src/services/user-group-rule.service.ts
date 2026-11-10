@@ -2,13 +2,16 @@ import {
 	UserGroupLogicalOperator,
 	UserGroupRuleOperator,
 	UserGroupRuleSource,
+	UserRole,
 	userGroupRulesSchema,
 	type UserGroupRuleDTO,
+	type UserGroupRulePreset,
 } from '@delivery-cruzeiro/types';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import {
 	getUserGroupRuleFieldConfig,
+	USER_GROUP_RULE_PRESETS,
 	type UserGroupRuleFieldConfig,
 } from './user-group-rule.config.js';
 
@@ -182,7 +185,25 @@ function buildItemPredicate(rule: UserGroupRuleDTO): Prisma.OrderItemWhereInput 
 	}
 }
 
-function buildAndGroup(rules: UserGroupRuleDTO[]): Prisma.UserWhereInput {
+async function buildPresetPredicate(preset: UserGroupRulePreset): Promise<Prisma.UserWhereInput> {
+	const { orderCount } = USER_GROUP_RULE_PRESETS[preset];
+	if (orderCount === 0) {
+		return { role: UserRole.CLIENT, orders: { none: {} } };
+	}
+
+	const matches = await prisma.order.groupBy({
+		by: ['userId'],
+		where: { user: { role: UserRole.CLIENT } },
+		having: { userId: { _count: { equals: orderCount } } },
+	});
+	const userIds = matches.flatMap(({ userId }) => (userId === null ? [] : [userId]));
+	return { role: UserRole.CLIENT, id: { in: userIds } };
+}
+
+function buildAndGroup(
+	rules: UserGroupRuleDTO[],
+	presetPredicates: ReadonlyMap<UserGroupRulePreset, Prisma.UserWhereInput>
+): Prisma.UserWhereInput {
 	const userPredicates = rules
 		.filter(rule => rule.source === UserGroupRuleSource.USER)
 		.map(buildUserPredicate);
@@ -192,6 +213,11 @@ function buildAndGroup(rules: UserGroupRuleDTO[]): Prisma.UserWhereInput {
 	const itemPredicates = rules
 		.filter(rule => rule.source === UserGroupRuleSource.ITEM)
 		.map(buildItemPredicate);
+	for (const rule of rules) {
+		if (rule.source === UserGroupRuleSource.PRESET) {
+			userPredicates.push(presetPredicates.get(rule.value)!);
+		}
+	}
 
 	if (itemPredicates.length > 0) {
 		orderPredicates.push({
@@ -212,7 +238,9 @@ function buildAndGroup(rules: UserGroupRuleDTO[]): Prisma.UserWhereInput {
 	return { AND: userPredicates };
 }
 
-export function buildUserGroupRuleWhere(rules: UserGroupRuleDTO[]): Prisma.UserWhereInput {
+export async function buildUserGroupRuleWhere(
+	rules: UserGroupRuleDTO[]
+): Promise<Prisma.UserWhereInput> {
 	const validation = userGroupRulesSchema.safeParse(rules);
 	if (!validation.success) {
 		throw new UserGroupRuleValidationError('Estrutura de regras invalida');
@@ -226,7 +254,15 @@ export function buildUserGroupRuleWhere(rules: UserGroupRuleDTO[]): Prisma.UserW
 		groups.at(-1)?.push(rule);
 	});
 
-	const alternatives = groups.map(buildAndGroup);
+	const presets = new Set(
+		validation.data.filter(rule => rule.source === UserGroupRuleSource.PRESET).map(rule => rule.value)
+	);
+	const presetPredicates = new Map(
+		await Promise.all(
+			[...presets].map(async preset => [preset, await buildPresetPredicate(preset)] as const)
+		)
+	);
+	const alternatives = groups.map(group => buildAndGroup(group, presetPredicates));
 	return alternatives.length === 1 ? alternatives[0] : { OR: alternatives };
 }
 
@@ -246,7 +282,7 @@ const matchedUserSelect = {
 
 export async function searchUsersByGroupRules(rules: UserGroupRuleDTO[]) {
 	const users = await prisma.user.findMany({
-		where: buildUserGroupRuleWhere(rules),
+		where: await buildUserGroupRuleWhere(rules),
 		select: matchedUserSelect,
 		orderBy: { name: 'asc' },
 	});
@@ -301,6 +337,7 @@ export async function getUserGroupRuleOptions() {
 			label: `${method.type} - ${method.last4 ? `final ${method.last4}` : method.provider}`,
 			value: method.id,
 		})),
+		preset: Object.entries(USER_GROUP_RULE_PRESETS).map(([value, { label }]) => ({ label, value })),
 		productId: products.map(product => ({ label: product.name, value: product.id })),
 		promotion_id: promotions.map(promotion => ({ label: promotion.name, value: promotion.id })),
 		store_id: stores.map(store => ({

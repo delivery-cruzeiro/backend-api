@@ -1,4 +1,4 @@
-import { isStoreClosed } from '../services/store-hours.js';
+import { defaultStoreOperationSettings, storeOperationSettingsSchema, isOperationOpen } from '@delivery-cruzeiro/types';
 import { prisma } from '../lib/prisma.js';
 import { getFiscalCityCode } from '../services/fiscal/shared/fiscal-location-codes.js';
 
@@ -29,7 +29,7 @@ export class StoreRepository {
 		const stores = await prisma.store.findMany({
 			orderBy: [{ nickname: 'asc' }, { name: 'asc' }],
 			select: {
-				openHour:true, closeHour:true, businessHours:true,
+				operationSettings: { select: { settings: true } },
 				address: {
 					select: {
 						city: true,
@@ -53,13 +53,13 @@ export class StoreRepository {
 			where: { isActive: true },
 		});
 
-		return stores.map(({openHour,closeHour,businessHours,...store}) => ({
+		return stores.map(({operationSettings,...store}) => ({
 			...store,
 			address: {
 				...store.address,
 				cityCode: getFiscalCityCode(store.address),
 			},
-			isClosed: isStoreClosed({openHour,closeHour,businessHours}),
+			isClosed: !isOperationOpen(operationSettings ? storeOperationSettingsSchema.parse(operationSettings.settings) : defaultStoreOperationSettings),
 		})) satisfies StoreOptionRecord[];
 	}
 
