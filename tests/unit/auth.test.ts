@@ -9,6 +9,7 @@ import {
 } from '../../src/controllers/auth.controller.js';
 import { auth } from '../../src/lib/auth.js';
 import { prisma } from '../../src/lib/prisma.js';
+import { emailConfirmation } from '../../src/services/email-confirmation.service.js';
 
 vi.mock('../../src/lib/prisma', () => ({
 	prisma: {
@@ -24,6 +25,10 @@ vi.mock('../../src/lib/auth', () => ({
 		api: { getSession: vi.fn() },
 		handler: vi.fn(),
 	},
+}));
+
+vi.mock('../../src/services/email-confirmation.service.js', () => ({
+	emailConfirmation: { sendOnRegistration: vi.fn() },
 }));
 
 const publicUser = {
@@ -89,6 +94,10 @@ describe('Auth Controller', () => {
 			await register(mockRequest, mockReply);
 
 			expect(auth.handler).toHaveBeenCalledWith(expect.any(Request));
+			expect(emailConfirmation.sendOnRegistration).toHaveBeenCalledWith(
+				publicUser.id,
+				expect.any(Function)
+			);
 			expect(mockReply.status).toHaveBeenCalledWith(201);
 			expect(mockReply.send).toHaveBeenCalledWith({
 				message: 'Usuario criado com sucesso',
