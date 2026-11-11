@@ -1,5 +1,6 @@
 import { storeOperationRoutes } from './routes/store-operation.routes.js';
 import { startOrderAutoAcceptance } from './services/order-auto-acceptance.service.js';
+import { startFiscalWorker } from './services/fiscal/shared/fiscal-worker.service.js';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -23,6 +24,7 @@ import { clientRoutes } from './routes/client.routes.js';
 import { cupPollNewMatchRoutes, cupPollRoutes } from './routes/cup-poll.routes.js';
 import { menuRoutes } from './routes/menu.routes.js';
 import { invoiceRoutes } from './routes/invoice.routes.js';
+import { fiscalCatalogRoutes } from './routes/fiscal-catalog.routes.js';
 import { orderRoutes } from './routes/order.routes.js';
 import { productRoutes } from './routes/product.routes.js';
 import { printerConfigurationRoutes } from './routes/printer-configuration.routes.js';
@@ -121,8 +123,10 @@ const startServer = async () => {
 		});
 
 		const stopAutoAcceptance = startOrderAutoAcceptance(error => fastify.log.error(error));
+		const stopFiscalWorker = startFiscalWorker(error => fastify.log.error(error, 'Falha no processamento fiscal'));
         fastify.addHook('onClose', async () => {
             stopAutoAcceptance();
+			await stopFiscalWorker();
 			unsubscribeWhatsAppAutomation();
 			await socketGateway.close();
 			await closeNominatimQueue();
@@ -155,6 +159,7 @@ const startServer = async () => {
 		await fastify.register(cupPollRoutes, { prefix: '/api' });
 		await fastify.register(cupPollNewMatchRoutes);
 		await fastify.register(invoiceRoutes, { prefix: '/api' });
+		await fastify.register(fiscalCatalogRoutes, { prefix: '/api' });
 		await fastify.register(menuRoutes, { prefix: '/api' });
 		await fastify.register(orderRoutes, { prefix: '/api' });
 		await fastify.register(productRoutes, { prefix: '/api' });

@@ -1,342 +1,216 @@
-import { FiscalDocumentStatus, FiscalDocumentType } from '@prisma/client';
+import { createHash, randomInt } from 'node:crypto';
+import { Prisma, type FiscalDocument } from '@prisma/client';
 import {
 	PrismaFiscalDocumentRepository,
-	type FiscalDocumentRecord,
-	type FiscalDocumentRepository,
+	PrismaFiscalSequenceRepository,
 } from '../../../repositories/fiscal.repository.js';
+import { PrismaSalesRepository } from '../../../repositories/sales.repository.js';
 import { GenerateDanfeNfceService } from '../danfe/generate-danfe-nfce.service.js';
-import type { DanfeNfcePrintPayload } from '../danfe/danfe-nfce.types.js';
-import {
-	PrismaSalesRepository,
-	type FiscalSaleRecord,
-	type SalesRepository,
-} from '../../../repositories/sales.repository.js';
+import { BuildNfeXmlService } from '../nfe/build-nfe-xml.service.js';
+import { BuildNfceXmlService } from '../nfce/build-nfce-xml.service.js';
 import { FiscalAccessKeyBuilderService } from './sefaz/fiscal-access-key-builder.service.js';
-import { FiscalSequenceService } from './sefaz/fiscal-sequence.service.js';
-import { SefazGatewayService, type SefazGateway } from './sefaz/sefaz-gateway.service.js';
 import { SignXmlService } from './signing/sign-xml.service.js';
-import { getFiscalCityCode, getFiscalStateCode } from './fiscal-location-codes.js';
-import type {
-	FiscalEmissionResult,
-	FiscalIssuerConfig,
-	FiscalXmlBuildInput,
-	FiscalXmlBuildResult,
-	SefazTransmitResult,
-} from './types/fiscal-emission.types.js';
-import {
-	DEFAULT_FISCAL_SERIE,
-	FISCAL_EMISSION_TYPES,
-	type FiscalDocumentModel,
-	type FiscalEmissionType,
-	type FiscalIdentity,
-} from './types/fiscal-id.types.js';
-import { FiscalSaleValidator } from './validators/fiscal-sale.validator.js';
+import { FiscalXmlValidationError, validateFiscalXml } from './xml/validate-fiscal-xml.service.js';
+import type { FiscalEnvironment } from './types/fiscal-emission.types.js';
+import { FiscalInputError, prepareFiscalSale } from './validators/fiscal-sale.validator.js';
 
-interface FiscalXmlBuilder {
-	execute(input: FiscalXmlBuildInput): FiscalXmlBuildResult;
+export class FiscalRequestError extends Error {
+	constructor(
+		readonly statusCode: number,
+		message: string
+	) {
+		super(message);
+	}
 }
 
-export interface EmitFiscalDocumentInput {
-	allowOfflineContingency: boolean;
-	documentType: FiscalDocumentType;
-	generateDanfe?: boolean;
-	model: FiscalDocumentModel;
-	orderId: string;
-	test?: boolean;
-	xmlBuilder: FiscalXmlBuilder;
-}
-
-interface DanfeNfceGenerator {
-	execute(input: {
-		authorizationDate?: string | null;
-		protocol?: string | null;
-		xml: string;
-	}): DanfeNfcePrintPayload;
+export function productionFiscalEnabled() {
+	return process.env.FISCAL_PRODUCTION_ENABLED === 'true';
 }
 
 export class FiscalEmissionService {
 	constructor(
-		private readonly salesRepository: SalesRepository = new PrismaSalesRepository(),
-		private readonly fiscalDocumentRepository: FiscalDocumentRepository = new PrismaFiscalDocumentRepository(),
-		private readonly fiscalSequenceService = new FiscalSequenceService(),
-		private readonly accessKeyBuilder = new FiscalAccessKeyBuilderService(),
-		private readonly signXmlService = new SignXmlService(),
-		private readonly sefazGateway: SefazGateway = new SefazGatewayService(),
-		private readonly saleValidator = new FiscalSaleValidator(),
-		private readonly danfeNfceGenerator: DanfeNfceGenerator = new GenerateDanfeNfceService()
+		private readonly sales = new PrismaSalesRepository(),
+		private readonly documents = new PrismaFiscalDocumentRepository(),
+		private readonly sequence = new PrismaFiscalSequenceRepository(),
+		private readonly signer = new SignXmlService(),
+		private readonly verifyXml = validateFiscalXml
 	) {}
 
-	async emit(input: EmitFiscalDocumentInput): Promise<FiscalEmissionResult> {
-		const sale = await this.salesRepository.findFiscalSaleById(input.orderId);
-
-		if (!sale) {
-			return {
-				error: 'Pedido nao encontrado',
-				statusCode: 404,
-				success: false,
-			};
+	async enqueue(orderId: string, environment: FiscalEnvironment, expectedModel?: '55' | '65') {
+		const existing = await this.documents.findForSale(orderId, environment);
+		if (existing) return existingSummary(existing, expectedModel);
+		if (environment === '1' && !productionFiscalEnabled()) {
+			throw new FiscalRequestError(
+				409,
+				'Emissão de produção desabilitada para este ambiente.'
+			);
+		}
+		const sale = await this.sales.findFiscalSaleById(orderId);
+		if (!sale) throw new FiscalRequestError(404, 'Pedido não encontrado.');
+		if (await this.documents.findLegacy(orderId, environment)) {
+			throw new FiscalRequestError(
+				409,
+				'O pedido tem registro fiscal anterior. Concilie a chave antes de emitir.'
+			);
 		}
 
-		const validationError = this.saleValidator.validate(sale, input.model);
-
-		if (validationError) {
-			return {
-				error: validationError,
-				statusCode: 400,
-				success: false,
-			};
+		let prepared: ReturnType<typeof prepareFiscalSale>;
+		try {
+			prepared = prepareFiscalSale(sale, environment);
+		} catch (error) {
+			if (error instanceof FiscalInputError) throw new FiscalRequestError(422, error.message);
+			throw error;
 		}
+		const { model, serie, lastNumber, snapshot } = prepared;
+		if (expectedModel && model !== expectedModel)
+			throw new FiscalRequestError(422, `Este pedido usa o modelo ${model}.`);
+		const cnpj = snapshot.issuer.cnpj;
 
-		const issuer = buildIssuerConfigFromSale(sale);
-
-		if (!issuer) {
-			return {
-				error: 'Configuracao fiscal da loja incompleta',
-				statusCode: 500,
-				success: false,
-			};
-		}
-
-		const serie = process.env.FISCAL_SERIE ?? DEFAULT_FISCAL_SERIE;
-		const invoiceNumber = await this.fiscalSequenceService.reserveFiscalNumber({
-			model: input.model,
-			serie,
-		});
-		const normalEmission = await this.buildSignAndTransmit({
-			documentType: input.documentType,
-			emissionType: FISCAL_EMISSION_TYPES.NORMAL,
-			input,
-			invoiceNumber,
-			issuer,
-			sale,
-			serie,
-			test: input.test ?? false,
-		});
-
-		if (normalEmission.transmission.connectionError && input.allowOfflineContingency) {
-			const contingency = await this.buildSignAndPersist({
-				documentType: input.documentType,
-				emissionType: FISCAL_EMISSION_TYPES.CONTINGENCY_NFCE,
-				input,
-				invoiceNumber,
-				issuer,
-				sale,
-				serie,
-				status: FiscalDocumentStatus.CONTINGENCY,
-				transmission: normalEmission.transmission,
+		try {
+			const queued = await this.documents.transaction(async () => {
+				const document = await this.documents.createIntent(
+					orderId,
+					environment,
+					cnpj,
+					model === '55' ? 'NFE' : 'NFCE'
+				);
+				const invoiceNumber = await this.sequence.reserveNextNumber({
+					model,
+					serie,
+					issuerCnpj: cnpj,
+					environment,
+					lastNumber,
+				});
+				const issuedAt = new Date();
+				let numericCode: string;
+				do {
+					numericCode = String(randomInt(1, 100_000_000)).padStart(8, '0');
+				} while (Number(numericCode) === invoiceNumber || /^(\d)\1{7}$/.test(numericCode));
+				const identity = new FiscalAccessKeyBuilderService().build({
+					emissionType: '1',
+					invoiceNumber,
+					issueDate: issuedAt,
+					issuerCnpj: cnpj,
+					model,
+					numericCode,
+					orderNumber: sale.orderNumber,
+					serie,
+					stateCode: '25',
+				});
+				const builder =
+					model === '55' ? new BuildNfeXmlService() : new BuildNfceXmlService();
+				let signedXml: string;
+				try {
+					const xml = builder.execute({
+						identity,
+						issuedAt,
+						environment,
+						sale: snapshot,
+					});
+					({ signedXml } = await this.signer.sign({ ...xml, issuerCnpj: cnpj }));
+					await this.verifyXml(signedXml, 'nfe');
+				} catch (error) {
+					if (error instanceof FiscalXmlValidationError)
+						throw new FiscalRequestError(422, error.message);
+					throw new FiscalRequestError(
+						503,
+						'Não foi possível preparar a nota. Verifique o certificado, as URLs fiscais e o pacote de schemas.'
+					);
+				}
+				return this.documents.queue(document.id, {
+					accessKey: identity.accessKey,
+					emissionType: '1',
+					fiscalNumber: identity.fiscalNumber,
+					model,
+					serie,
+					xmlContent: signedXml,
+				});
 			});
-			const danfe = input.generateDanfe
-				? await this.generateAndAttachDanfe({
-						document: contingency.document,
-						protocol: contingency.document.protocol,
-						signedXml: contingency.signedXml,
-					})
-				: undefined;
-
-			return {
-				accessKey: contingency.identity.accessKey,
-				...(danfe ? { danfe } : {}),
-				document: contingency.document,
-				fiscalId: contingency.identity.fiscalId,
-				message: 'NFC-e armazenada em contingencia offline para reenvio posterior',
-				status: FiscalDocumentStatus.CONTINGENCY,
-				success: true,
-			};
+			return fiscalSummary(queued);
+		} catch (error) {
+			if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+				const winner = await this.documents.findForSale(orderId, environment);
+				if (winner) return existingSummary(winner, expectedModel);
+			}
+			throw error;
 		}
+	}
 
-		const status =
-			normalEmission.transmission.status === 'AUTHORIZED'
-				? FiscalDocumentStatus.AUTHORIZED
-				: FiscalDocumentStatus.REJECTED;
-		const document = await this.persistFiscalDocument({
-			documentType: input.documentType,
-			identity: normalEmission.identity,
-			orderId: sale.id,
-			signedXml: normalEmission.signedXml,
-			status,
-			testMode: input.test ?? false,
-			transmission: normalEmission.transmission,
-		});
-		const danfe =
-			input.generateDanfe &&
-			status === FiscalDocumentStatus.AUTHORIZED &&
-			input.documentType === FiscalDocumentType.NFCE
-				? await this.generateAndAttachDanfe({
-						document,
-						protocol: normalEmission.transmission.protocol,
-						signedXml: normalEmission.signedXml,
-					})
-				: undefined;
+	async get(orderId: string, id: string, format?: 'xml' | 'danfe') {
+		const document = await this.documents.findById(orderId, id);
+		if (!document) throw new FiscalRequestError(404, 'Documento fiscal não encontrado.');
+		if (!format) return fiscalSummary(document);
+		if (document.status !== 'AUTHORIZED' || !document.authorizedXml) {
+			throw new FiscalRequestError(409, 'Documento ainda sem XML autorizado.');
+		}
+		if (
+			createHash('sha256').update(document.authorizedXml).digest('hex') !==
+			document.authorizedHash
+		) {
+			throw new FiscalRequestError(
+				500,
+				'A integridade do XML autorizado não pôde ser confirmada.'
+			);
+		}
+		if (format === 'xml') return document.authorizedXml;
+		if (document.type !== 'NFCE')
+			throw new FiscalRequestError(422, 'Impressão térmica disponível para NFC-e.');
+		return new GenerateDanfeNfceService().execute({ xml: document.authorizedXml });
+	}
 
+	async list(orderId: string) {
 		return {
-			accessKey: normalEmission.identity.accessKey,
-			...(danfe ? { danfe } : {}),
-			document,
-			fiscalId: normalEmission.identity.fiscalId,
-			message:
-				status === FiscalDocumentStatus.AUTHORIZED
-					? 'Nota fiscal autorizada pela SEFAZ'
-					: input.test
-						? 'Nota fiscal de teste enviada para homologacao da SEFAZ'
-						: 'Nota fiscal rejeitada pela SEFAZ',
-			protocol: normalEmission.transmission.protocol,
-			signedXml: input.test && !input.generateDanfe ? normalEmission.signedXml : undefined,
-			status,
-			success: true,
+			productionEnabled: productionFiscalEnabled(),
+			documents: (await this.documents.listForSale(orderId)).map(fiscalSummary),
 		};
 	}
 
-	private async buildSignAndTransmit(input: BuildSignInput) {
-		const signed = await this.buildAndSign(input);
-		const transmission = await this.sefazGateway.transmit({
-			documentType: input.documentType,
-			signedXml: signed.signedXml,
-			test: input.test,
-		});
-
-		return {
-			...signed,
-			transmission,
-		};
-	}
-
-	private async buildSignAndPersist(input: BuildSignInput & PersistContingencyInput) {
-		const signed = await this.buildAndSign(input);
-		const document = await this.persistFiscalDocument({
-			documentType: input.documentType,
-			identity: signed.identity,
-			orderId: input.sale.id,
-			signedXml: signed.signedXml,
-			status: input.status,
-			transmission: input.transmission,
-		});
-
-		return {
-			...signed,
-			document,
-		};
-	}
-
-	private async buildAndSign(input: BuildSignInput) {
-		const identity = this.accessKeyBuilder.build({
-			emissionType: input.emissionType,
-			invoiceNumber: input.invoiceNumber,
-			issueDate: new Date(),
-			issuerCnpj: input.issuer.cnpj,
-			model: input.input.model,
-			orderNumber: input.sale.orderNumber,
-			serie: input.serie,
-			stateCode: input.issuer.stateCode,
-		});
-		const xml = input.input.xmlBuilder.execute({
-			identity,
-			issuer: input.issuer,
-			sale: input.sale,
-			test: input.test,
-		});
-		const signed = await this.signXmlService.sign({
-			referenceId: xml.referenceId,
-			xml: xml.xml,
-		});
-
-		return {
-			identity,
-			signedXml: signed.signedXml,
-		};
-	}
-
-	private async persistFiscalDocument(input: PersistFiscalDocumentInput) {
-		return this.fiscalDocumentRepository.save({
-			accessKey: input.identity.accessKey,
-			emissionType: input.identity.emissionType,
-			fiscalNumber: input.identity.fiscalNumber,
-			model: input.identity.model,
-			orderId: input.orderId,
-			protocol: input.transmission.protocol,
-			sefazResponse: {
-				connectionError: input.transmission.connectionError ?? false,
-				rawResponse: input.transmission.rawResponse ?? null,
-				statusCode: input.transmission.statusCode ?? null,
-				statusMessage: input.transmission.statusMessage ?? null,
-				testMode: input.testMode ?? false,
-				transmitted: true,
-			},
-			serie: input.identity.serie,
-			status: input.status,
-			type: input.documentType,
-			xmlContent: input.signedXml,
-			xmlPath: `fiscal_documents/${input.identity.accessKey}.xml`,
-		});
-	}
-
-	private async generateAndAttachDanfe(input: GenerateAndAttachDanfeInput) {
-		const danfe = this.danfeNfceGenerator.execute({
-			protocol: input.protocol,
-			xml: input.signedXml,
-		});
-
-		await this.fiscalDocumentRepository.updateQrCodeUrl(input.document.id, danfe.qrCodeUrl);
-
-		return danfe;
+	async reconcile(orderId: string, id: string) {
+		const { count } = await this.documents.requestReconciliation(orderId, id);
+		if (!count)
+			throw new FiscalRequestError(
+				409,
+				'O documento não está aguardando uma consulta manual.'
+			);
+		return { id };
 	}
 }
 
-interface BuildSignInput {
-	documentType: FiscalDocumentType;
-	emissionType: FiscalEmissionType;
-	input: EmitFiscalDocumentInput;
-	invoiceNumber: number;
-	issuer: FiscalIssuerConfig;
-	sale: FiscalSaleRecord;
-	serie: string;
-	test?: boolean;
+function existingSummary(document: FiscalDocument, expectedModel?: '55' | '65') {
+	if (expectedModel && document.model !== expectedModel)
+		throw new FiscalRequestError(422, 'O pedido já possui documento fiscal de outro modelo.');
+	return fiscalSummary(document);
 }
 
-interface PersistContingencyInput {
-	status: FiscalDocumentStatus;
-	transmission: SefazTransmitResult;
-}
-
-interface PersistFiscalDocumentInput {
-	documentType: FiscalDocumentType;
-	identity: FiscalIdentity;
-	orderId: string;
-	signedXml: string;
-	status: FiscalDocumentStatus;
-	testMode?: boolean;
-	transmission: SefazTransmitResult;
-}
-
-interface GenerateAndAttachDanfeInput {
-	document: FiscalDocumentRecord;
-	protocol?: string | null;
-	signedXml: string;
-}
-
-function buildIssuerConfigFromSale(sale: FiscalSaleRecord): FiscalIssuerConfig | null {
-	if (!sale.store?.cnpj) {
-		return null;
-	}
-
-	const address = sale.store.address;
-	const cityCode = getFiscalCityCode({
-		city: address.city,
-		state: address.state,
-	});
-	const stateCode = getFiscalStateCode(address.state);
-
-	if (!cityCode || !stateCode) {
-		return null;
-	}
-
+function fiscalSummary(document: FiscalDocument) {
+	const response = document.sefazResponse;
+	const reason =
+		response &&
+		typeof response === 'object' &&
+		'statusMessage' in response &&
+		typeof response.statusMessage === 'string'
+			? response.statusMessage
+			: null;
+	const message =
+		document.status === 'AUTHORIZED'
+			? 'Nota fiscal autorizada pela SEFAZ.'
+			: document.status === 'REJECTED'
+				? (reason ?? 'Nota fiscal rejeitada pela SEFAZ.')
+				: document.status === 'AWAITING_SEFAZ'
+					? (reason ?? 'Aguardando confirmação da SEFAZ.')
+					: document.status === 'CANCELED'
+						? 'Documento fiscal cancelado.'
+						: 'Solicitação fiscal registrada.';
 	return {
-		address,
-		cityCode,
-		cnpj: sale.store.cnpj,
-		name: sale.store.name,
-		phoneNumber: sale.store.phoneNumber,
-		stateCode,
-		storeId: sale.store.id,
-		tradeName: sale.store.nickname,
+		id: document.id,
+		orderId: document.orderId,
+		accessKey: document.accessKey,
+		model: document.model,
+		environment: document.environment,
+		protocol: document.protocol,
+		status: document.status,
+		message,
+		authorizedAt: document.authorizedAt,
+		requiresReview: document.status === 'AWAITING_SEFAZ' && document.nextAttemptAt === null,
 	};
 }

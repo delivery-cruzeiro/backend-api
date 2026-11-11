@@ -1,368 +1,375 @@
-import { FiscalDocumentStatus, FiscalDocumentType } from '@prisma/client';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type {
-	FiscalDocumentRepository,
-	FiscalSequenceRepository,
-	SaveFiscalDocumentInput,
-} from '../../src/repositories/fiscal.repository.js';
-import type { FiscalSaleRecord, SalesRepository } from '../../src/repositories/sales.repository.js';
-import { FiscalEmissionService } from '../../src/services/fiscal/shared/fiscal-emission.service.js';
-import { FiscalSequenceService } from '../../src/services/fiscal/shared/sefaz/fiscal-sequence.service.js';
-import type { SefazGateway } from '../../src/services/fiscal/shared/sefaz/sefaz-gateway.service.js';
-import type { SignXmlService } from '../../src/services/fiscal/shared/signing/sign-xml.service.js';
-import type { FiscalXmlBuildInput } from '../../src/services/fiscal/shared/types/fiscal-emission.types.js';
-import { FISCAL_DOCUMENT_MODELS } from '../../src/services/fiscal/shared/types/fiscal-id.types.js';
+import { describe, expect, it, vi } from 'vitest';
+import type { PrismaFiscalDocumentRepository } from '../../src/repositories/fiscal.repository.js';
+import { FiscalWorker } from '../../src/services/fiscal/shared/fiscal-worker.service.js';
+import { prepareFiscalSale } from '../../src/services/fiscal/shared/validators/fiscal-sale.validator.js';
+import { BuildNfceXmlService } from '../../src/services/fiscal/nfce/build-nfce-xml.service.js';
+import { FiscalAccessKeyBuilderService } from '../../src/services/fiscal/shared/sefaz/fiscal-access-key-builder.service.js';
 
-const baseSale: FiscalSaleRecord = {
-	address: {
-		city: 'Campina Grande',
-		complement: null,
-		neighborhood: 'Centro',
-		number: '100',
-		state: 'PB',
-		street: 'Rua Teste',
-		zipCode: '58400000',
-	},
-	createdAt: new Date('2026-05-11T10:00:00.000Z'),
-	deliveryFee: 0,
-	discount: 0,
-	id: 'order-1',
-	items: [
-		{
-			id: 'item-1',
-			price: 20,
-			product: {
-				id: 'product-1',
-				name: 'Pizza',
-			},
-			productId: 'product-1',
-			quantity: 2,
-		},
-	],
-	notes: null,
-	orderNumber: 18273,
-	store: {
-		address: {
-			city: 'Campina Grande',
-			complement: null,
-			neighborhood: 'Cruzeiro',
-			number: '250',
-			state: 'PB',
-			street: 'Avenida Francisco Lopes de Almeida',
-			zipCode: '58417-290',
-		},
-		cnpj: '18.016.122/0001-31',
-		id: 'store-1',
-		name: 'Loja 1',
-		nickname: 'Pastel do cruzeiro - Loja 1',
-		phoneNumber: '83 3335 1491',
-	},
-	storeId: 'store-1',
-	subtotal: 40,
-	total: 40,
-	user: {
-		email: 'cliente@example.com',
-		name: 'Cliente Teste',
-		phone: null,
-	},
+const record = {
+	id: 'fiscal-1',
+	order: { status: 'CONFIRMED' },
+	environment: '2',
+	issuerCnpj: '12345678000195',
+	createdAt: new Date(),
+	accessKey: '25261112345678000195650090000000011000182735',
+	xmlContent: '<NFe/>',
+	type: 'NFCE',
+	receipt: null,
 };
 
-const xmlBuilder = {
-	execute: vi.fn((input: FiscalXmlBuildInput) => ({
-		referenceId: input.identity.fiscalId,
-		xml: `<NFe><infNFe Id="${input.identity.fiscalId}"></infNFe></NFe>`,
-	})),
-};
-
-describe('FiscalEmissionService', () => {
-	let savedDocuments: SaveFiscalDocumentInput[];
-	let salesRepository: SalesRepository;
-	let fiscalDocumentRepository: FiscalDocumentRepository;
-	let sequenceRepository: FiscalSequenceRepository;
-	let signXmlService: SignXmlService;
-	let sefazGateway: SefazGateway;
-
-	beforeEach(() => {
-		delete process.env.FISCAL_CITY_CODE;
-		delete process.env.FISCAL_ISSUER_CNPJ;
-		delete process.env.FISCAL_ISSUER_NAME;
-		delete process.env.FISCAL_STATE_CODE;
-		savedDocuments = [];
-		salesRepository = {
-			findFiscalSaleById: vi.fn().mockResolvedValue(baseSale),
-		};
-		fiscalDocumentRepository = {
-			save: vi.fn(async input => {
-				savedDocuments.push(input);
-
-				return {
-					accessKey: input.accessKey,
-					emissionType: input.emissionType,
-					fiscalNumber: input.fiscalNumber,
-					id: `fiscal-${savedDocuments.length}`,
-					model: input.model,
-					orderId: input.orderId,
-					protocol: input.protocol ?? null,
-					qrCodeUrl: null,
-					serie: input.serie,
-					status: input.status,
-					type: input.type,
-					xmlPath: input.xmlPath ?? null,
-				};
-			}),
-			updateQrCodeUrl: vi.fn(async (id, qrCodeUrl) => ({
-				accessKey: savedDocuments[0]?.accessKey ?? null,
-				emissionType: savedDocuments[0]?.emissionType ?? null,
-				fiscalNumber: savedDocuments[0]?.fiscalNumber ?? null,
-				id,
-				model: savedDocuments[0]?.model ?? null,
-				orderId: savedDocuments[0]?.orderId ?? 'order-1',
-				protocol: savedDocuments[0]?.protocol ?? null,
-				qrCodeUrl,
-				serie: savedDocuments[0]?.serie ?? null,
-				status: savedDocuments[0]?.status ?? FiscalDocumentStatus.AUTHORIZED,
-				type: savedDocuments[0]?.type ?? FiscalDocumentType.NFCE,
-				xmlPath: savedDocuments[0]?.xmlPath ?? null,
-			})),
-		};
-		sequenceRepository = {
-			reserveNextNumber: vi.fn().mockResolvedValue(1),
-		};
-		signXmlService = {
-			sign: vi.fn(async input => ({
-				certificateBase64: 'CERT',
-				referenceUri: `#${input.referenceId}`,
-				signatureXml: '<Signature />',
-				signedXml: `<signed>${input.referenceId}</signed>`,
-			})),
-		} as unknown as SignXmlService;
-		sefazGateway = {
-			transmit: vi.fn().mockResolvedValue({
-				protocol: '123',
-				rawResponse: '<cStat>100</cStat><nProt>123</nProt>',
-				status: 'AUTHORIZED',
-				statusCode: '100',
-				statusMessage: 'Autorizado',
-			}),
-		};
-		xmlBuilder.execute.mockClear();
-	});
-
-	it('emite NF-e, assina, transmite e persiste documento autorizado', async () => {
-		const service = createService();
-
-		const result = await service.emit({
-			allowOfflineContingency: false,
-			documentType: FiscalDocumentType.NFE,
-			model: FISCAL_DOCUMENT_MODELS.NFE,
-			orderId: 'order-1',
-			xmlBuilder,
-		});
-
-		expect(result).toMatchObject({
-			protocol: '123',
-			status: FiscalDocumentStatus.AUTHORIZED,
-			success: true,
-		});
-		expect(sequenceRepository.reserveNextNumber).toHaveBeenCalledWith({
-			model: FISCAL_DOCUMENT_MODELS.NFE,
-			serie: '009',
-		});
-		expect(savedDocuments).toHaveLength(1);
-		expect(savedDocuments[0]).toMatchObject({
-			emissionType: '1',
-			fiscalNumber: '000000001',
-			model: FISCAL_DOCUMENT_MODELS.NFE,
-			orderId: 'order-1',
-			protocol: '123',
-			status: FiscalDocumentStatus.AUTHORIZED,
-			type: FiscalDocumentType.NFE,
-		});
-		expect(savedDocuments[0]?.xmlContent).toContain('<signed>');
-		expect(xmlBuilder.execute).toHaveBeenCalledWith(
-			expect.objectContaining({
-				issuer: expect.objectContaining({
-					cityCode: '2504009',
-					cnpj: '18.016.122/0001-31',
-					name: 'Loja 1',
-					stateCode: '25',
-					storeId: 'store-1',
-					tradeName: 'Pastel do cruzeiro - Loja 1',
-				}),
-			})
-		);
-	});
-
-	it('salva NFC-e em contingencia offline com tpEmis 9 quando ha erro de conexao', async () => {
-		vi.mocked(sefazGateway.transmit).mockResolvedValue({
-			connectionError: true,
-			rawResponse: 'timeout',
-			status: 'REJECTED',
-			statusMessage: 'Erro de conexao com a SEFAZ',
-		});
-		const service = createService();
-
-		const result = await service.emit({
-			allowOfflineContingency: true,
-			documentType: FiscalDocumentType.NFCE,
-			model: FISCAL_DOCUMENT_MODELS.NFCE,
-			orderId: 'order-1',
-			xmlBuilder,
-		});
-
-		expect(result).toMatchObject({
-			status: FiscalDocumentStatus.CONTINGENCY,
-			success: true,
-		});
-		expect(savedDocuments).toHaveLength(1);
-		expect(savedDocuments[0]).toMatchObject({
-			emissionType: '9',
-			fiscalNumber: '000000001',
-			model: FISCAL_DOCUMENT_MODELS.NFCE,
-			status: FiscalDocumentStatus.CONTINGENCY,
-			type: FiscalDocumentType.NFCE,
-		});
-		expect(savedDocuments[0]?.sefazResponse).toMatchObject({
-			connectionError: true,
-			rawResponse: 'timeout',
-		});
-		expect(vi.mocked(signXmlService.sign)).toHaveBeenCalledTimes(2);
-	});
-
-	it('emite documento fiscal de teste usando endpoint de homologacao', async () => {
-		const service = createService();
-
-		const result = await service.emit({
-			allowOfflineContingency: false,
-			documentType: FiscalDocumentType.NFCE,
-			model: FISCAL_DOCUMENT_MODELS.NFCE,
-			orderId: 'order-1',
-			test: true,
-			xmlBuilder,
-		});
-
-		expect(result).toMatchObject({
-			protocol: '123',
-			signedXml: expect.stringContaining('<signed>'),
-			status: FiscalDocumentStatus.AUTHORIZED,
-			success: true,
-		});
-		expect(sefazGateway.transmit).toHaveBeenCalledWith({
-			documentType: FiscalDocumentType.NFCE,
-			signedXml: expect.stringContaining('<signed>'),
-			test: true,
-		});
-		expect(xmlBuilder.execute).toHaveBeenCalledWith(
-			expect.objectContaining({
-				test: true,
-			})
-		);
-		expect(savedDocuments).toHaveLength(1);
-		expect(savedDocuments[0]).toMatchObject({
-			emissionType: '1',
-			fiscalNumber: '000000001',
-			model: FISCAL_DOCUMENT_MODELS.NFCE,
-			orderId: 'order-1',
-			protocol: '123',
-			status: FiscalDocumentStatus.AUTHORIZED,
-			type: FiscalDocumentType.NFCE,
-		});
-		expect(savedDocuments[0]?.sefazResponse).toMatchObject({
+function worker(status: string) {
+	const finish = vi.fn();
+	const repository = {
+		claim: vi.fn().mockResolvedValue({ document: { ...record, status }, leaseToken: 'lease' }),
+		finish,
+	};
+	const gateway = {
+		transmit: vi.fn().mockResolvedValue({ status: 'AWAITING_SEFAZ', statusMessage: 'timeout' }),
+		reconcile: vi.fn().mockResolvedValue({
+			status: 'AUTHORIZED',
+			protocol: '325260000000001',
+			authorizedAt: new Date('2026-11-10T12:00:00Z'),
 			statusCode: '100',
-			testMode: true,
-			transmitted: true,
-		});
-		expect(savedDocuments[0]?.xmlContent).toContain('<signed>');
-	});
+			protocolXml: '<protNFe/>',
+		}),
+	};
+	const validate = vi.fn();
+	const service = new FiscalWorker(
+		repository as unknown as PrismaFiscalDocumentRepository,
+		gateway,
+		validate
+	);
+	return { service, gateway, finish, validate };
+}
 
-	it('gera DANFE NFC-e para impressao quando solicitado', async () => {
-		const danfeGenerator = {
-			execute: vi.fn(() => ({
-				accessKey: 'access-key',
-				columns: 48 as const,
-				contentBase64: 'G0AK',
-				encoding: 'base64' as const,
-				format: 'ESC_POS' as const,
-				qrCodeUrl: 'https://sefaz.example/qrcode?p=access-key',
-			})),
-		};
-		const service = createService(danfeGenerator);
-
-		const result = await service.emit({
-			allowOfflineContingency: true,
-			documentType: FiscalDocumentType.NFCE,
-			generateDanfe: true,
-			model: FISCAL_DOCUMENT_MODELS.NFCE,
-			orderId: 'order-1',
-			xmlBuilder,
-		});
-
-		expect(result).toMatchObject({
-			danfe: {
-				contentBase64: 'G0AK',
-				format: 'ESC_POS',
-				qrCodeUrl: 'https://sefaz.example/qrcode?p=access-key',
-			},
-			status: FiscalDocumentStatus.AUTHORIZED,
-			success: true,
-		});
-		expect(danfeGenerator.execute).toHaveBeenCalledWith({
-			protocol: '123',
-			xml: expect.stringContaining('<signed>'),
-		});
-		expect(fiscalDocumentRepository.updateQrCodeUrl).toHaveBeenCalledWith(
-			'fiscal-1',
-			'https://sefaz.example/qrcode?p=access-key'
+describe('processador fiscal', () => {
+	it('preserva uma tentativa incerta para consulta futura', async () => {
+		const { service, finish, gateway } = worker('PENDING');
+		await service.runOne();
+		expect(gateway.transmit).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ accessKey: record.accessKey })
+		);
+		expect(finish).toHaveBeenCalledWith(
+			record.id,
+			'lease',
+			expect.objectContaining({ status: 'AWAITING_SEFAZ' })
 		);
 	});
 
-	it('retorna erro quando a loja do pedido nao tem configuracao fiscal completa', async () => {
-		const store = baseSale.store;
-
-		if (!store) {
-			throw new Error('baseSale deve ter loja para este teste');
+	it.each(['PROCESSING', 'AWAITING_SEFAZ'])(
+		'consulta e salva o XML processado a partir de %s',
+		async status => {
+			const { service, finish, gateway, validate } = worker(status);
+			await service.runOne();
+			expect(gateway.transmit).not.toHaveBeenCalled();
+			expect(gateway.reconcile).toHaveBeenCalledWith(
+				expect.objectContaining({ accessKey: record.accessKey }),
+				null
+			);
+			expect(validate).toHaveBeenCalledWith(
+				expect.stringContaining('<NFe/><protNFe/>'),
+				'procNFe'
+			);
+			expect(finish).toHaveBeenCalledWith(
+				record.id,
+				'lease',
+				expect.objectContaining({
+					status: 'AUTHORIZED',
+					protocol: '325260000000001',
+					authorizedHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+				})
+			);
 		}
+	);
+});
 
-		vi.mocked(salesRepository.findFiscalSaleById).mockResolvedValue({
-			...baseSale,
-			store: {
-				...store,
-				cnpj: null,
+const address = {
+	city: 'Campina Grande',
+	state: 'PB',
+	street: 'Rua Teste',
+	number: '1',
+	neighborhood: 'Centro',
+	zipCode: '58400000',
+};
+const tax = {
+	ncm: '19059090',
+	cfop: '5102',
+	unit: 'UN',
+	origin: '0',
+	gtin: 'SEM GTIN',
+	taxProfile: 'SN102_PIS99_COFINS99',
+};
+function sale(override: Record<string, unknown> = {}) {
+	return {
+		status: 'CONFIRMED',
+		orderNumber: 42,
+		address,
+		paymentType: 'PIX',
+		payments: [],
+		subtotal: 20,
+		deliveryFee: 2.01,
+		discount: 1.01,
+		total: 21,
+		paymentAdditionalValue: 0,
+		user: { cpf: '52998224725', name: 'Consumidor' },
+		items: ['a', 'b'].map(productId => ({
+			productId,
+			price: 10,
+			quantity: 1,
+			product: { name: 'Teste', fiscalData: { '65': tax } },
+		})),
+		store: {
+			address,
+			cnpj: '12345678000195',
+			name: 'Loja',
+			nickname: 'Loja',
+			fiscalProfile: {
+				ie: '160000000',
+				crt: '1',
+				homologation: {
+					enabled: true,
+					enable65: true,
+					allowDelivery: true,
+					staticPix: true,
+					serie65: '9',
+					lastNumber65: 0,
+				},
 			},
-		});
-		const service = createService();
+		},
+		...override,
+	} as unknown as Parameters<typeof prepareFiscalSale>[0];
+}
 
-		const result = await service.emit({
-			allowOfflineContingency: false,
-			documentType: FiscalDocumentType.NFE,
-			model: FISCAL_DOCUMENT_MODELS.NFE,
-			orderId: 'order-1',
-			test: true,
-			xmlBuilder,
-		});
-
-		expect(result).toEqual({
-			error: 'Configuracao fiscal da loja incompleta',
-			statusCode: 500,
-			success: false,
-		});
-		expect(sequenceRepository.reserveNextNumber).not.toHaveBeenCalled();
-		expect(xmlBuilder.execute).not.toHaveBeenCalled();
-		expect(savedDocuments).toHaveLength(0);
+describe('dados da venda fiscal', () => {
+	it('distingue entrega desabilitada de identificação do destinatário ausente', () => {
+		const original = sale({ user: null });
+		const profile = original.store!.fiscalProfile as Record<string, unknown>;
+		const setup = profile.homologation as Record<string, unknown>;
+		setup.allowDelivery = false;
+		expect(() => prepareFiscalSale(original, '2')).toThrow(
+			'emissão com entrega está desabilitada em homologação'
+		);
+		setup.allowDelivery = true;
+		expect(() => prepareFiscalSale(original, '2')).toThrow(
+			'Informe o CPF/CNPJ do destinatário'
+		);
 	});
 
-	function createService(
-		danfeGenerator?: ConstructorParameters<typeof FiscalEmissionService>[7]
-	) {
-		return new FiscalEmissionService(
-			salesRepository,
-			fiscalDocumentRepository,
-			new FiscalSequenceService(sequenceRepository),
-			undefined,
-			signXmlService,
-			sefazGateway,
-			undefined,
-			danfeGenerator
+	it('identifica qual modelo está desabilitado para o ambiente', () => {
+		const original = sale();
+		const profile = original.store!.fiscalProfile as Record<string, unknown>;
+		(profile.homologation as Record<string, unknown>).enable65 = false;
+		expect(() => prepareFiscalSale(original, '2')).toThrow(
+			'NFC-e (65) não está habilitado em homologação'
 		);
-	}
+	});
+	it('herda dados da categoria e tributos da loja, com exceções no produto', () => {
+		const original = sale();
+		const store = {
+			...original.store,
+			fiscalProfile: {
+				...(original.store.fiscalProfile as Record<string, unknown>),
+				taxDefaults: { csosn: '102', pisCst: '99', cofinsCst: '99' },
+			},
+		};
+		const category = {
+			fiscalData: { unit: 'UN', origin: '0', gtin: 'SEM GTIN' },
+			fiscalOperation: { code: '5101', classification: { ncm: '19059090' } },
+		};
+		const items = original.items.map(item => ({
+			...item,
+			product: {
+				...item.product,
+				fiscalData: null as unknown,
+				fiscalOperation: null as unknown,
+				category,
+			},
+		}));
+		expect(prepareFiscalSale(sale({ store, items }), '2').snapshot.items[0]).toMatchObject({
+			unit: 'UN',
+			origin: '0',
+			gtin: 'SEM GTIN',
+			csosn: '102',
+			pisCst: '99',
+			cofinsCst: '99',
+		});
+		items[0].product.fiscalData = { unit: 'KG', csosn: '500' };
+		items[0].product.fiscalOperation = { code: '5405', classification: { ncm: '19059090' } };
+		expect(prepareFiscalSale(sale({ store, items }), '2').snapshot.items[0]).toMatchObject({
+			unit: 'KG',
+			cfop: '5405',
+			csosn: '500',
+		});
+		items[0].product.fiscalData = { unit: null, csosn: null };
+		items[0].product.fiscalOperation = null;
+		expect(prepareFiscalSale(sale({ store, items }), '2').snapshot.items[0]).toMatchObject({
+			unit: 'UN',
+			csosn: '102',
+		});
+	});
+
+	it('não assume tributos quando a loja não os cadastrou', () => {
+		const original = sale();
+		const items = original.items.map(item => ({
+			...item,
+			product: {
+				...item.product,
+				fiscalData: { ...tax, taxProfile: undefined },
+			},
+		}));
+		expect(() => prepareFiscalSale(sale({ items }), '2')).toThrow('classificação fiscal');
+	});
+
+	it('usa os padrões da loja do pedido e bloqueia ST incompatível', () => {
+		const original = sale();
+		const items = original.items.map(item => ({
+			...item,
+			product: {
+				...item.product,
+				fiscalData: { ...tax, taxProfile: undefined },
+			},
+		}));
+		const withTaxes = (csosn: string) =>
+			sale({
+				items,
+				store: {
+					...original.store,
+					fiscalProfile: {
+						...(original.store.fiscalProfile as Record<string, unknown>),
+						taxDefaults: { csosn, pisCst: '99', cofinsCst: '99' },
+					},
+				},
+			});
+		expect(prepareFiscalSale(withTaxes('102'), '2').snapshot.items[0].csosn).toBe('102');
+		expect(() => prepareFiscalSale(withTaxes('500'), '2')).toThrow('classificação fiscal');
+	});
+
+	it('usa o cadastro fiscal da loja vinculada a cada venda', () => {
+		const first = sale();
+		const second = sale({
+			store: {
+				...first.store,
+				cnpj: '11222333000181',
+				name: 'Outra loja',
+				nickname: 'Outra loja',
+				fiscalProfile: {
+					...(first.store.fiscalProfile as Record<string, unknown>),
+					ie: '160000001',
+				},
+			},
+		});
+		expect(prepareFiscalSale(first, '2').snapshot.issuer).toMatchObject({
+			cnpj: '12345678000195',
+			ie: '160000000',
+			crt: '1',
+			name: 'Loja',
+		});
+		expect(prepareFiscalSale(second, '2').snapshot.issuer).toMatchObject({
+			cnpj: '11222333000181',
+			ie: '160000001',
+			crt: '1',
+			name: 'Outra loja',
+		});
+	});
+
+	it.each([{ ie: undefined }, { crt: undefined }, { crt: '3' }])(
+		'bloqueia cadastro ausente ou regime ainda não suportado sem assumir valores',
+		override => {
+			const original = sale();
+			const store = {
+				...original.store,
+				fiscalProfile: {
+					...(original.store.fiscalProfile as Record<string, unknown>),
+					...override,
+				},
+			};
+			expect(() => prepareFiscalSale(sale({ store }), '2')).toThrow();
+		}
+	);
+
+	it('herda NCM e operação da categoria e prioriza a escolha do produto', () => {
+		const original = sale();
+		const categoryOperation = { code: '5101', classification: { ncm: '21069090' } };
+		const productOperation = { code: '5102', classification: { ncm: '19059090' } };
+		const items = original.items.map(item => ({
+			...item,
+			product: {
+				...item.product,
+				fiscalOperation: null as typeof productOperation | null,
+				category: { fiscalOperation: categoryOperation },
+			},
+		}));
+		const inherited = prepareFiscalSale(sale({ items }), '2');
+		expect(inherited.snapshot.items[0]).toMatchObject({ ncm: '21069090', cfop: '5101' });
+		items[0].product.fiscalOperation = productOperation;
+		const overridden = prepareFiscalSale(sale({ items }), '2');
+		expect(overridden.snapshot.items[0]).toMatchObject({ ncm: '19059090', cfop: '5102' });
+		expect(overridden.snapshot.items[1]).toMatchObject({ ncm: '21069090', cfop: '5101' });
+		items[0].product.fiscalOperation = null;
+		expect(prepareFiscalSale(sale({ items }), '2').snapshot.items[0]).toMatchObject({
+			ncm: '21069090',
+			cfop: '5101',
+		});
+	});
+
+	it('gera NFC-e de homologação para retirada sem identificar o cliente', () => {
+		vi.stubEnv('NFCE_QRCODE_URL_HOMOLOGATION', 'http://www.sefaz.pb.gov.br/nfcehom');
+		vi.stubEnv('NFCE_ACCESS_KEY_URL_HOMOLOGATION', 'https://www.sefaz.pb.gov.br/nfcehom/');
+		try {
+			const { model, snapshot } = prepareFiscalSale(
+				sale({
+					address: null,
+					user: null,
+					deliveryFee: 0,
+					discount: 0,
+					total: 20,
+				}),
+				'2'
+			);
+			const issuedAt = new Date('2026-11-10T15:00:00-03:00');
+			const identity = new FiscalAccessKeyBuilderService().build({
+				emissionType: '1',
+				invoiceNumber: 1,
+				issueDate: issuedAt,
+				issuerCnpj: snapshot.issuer.cnpj,
+				model,
+				numericCode: '00018273',
+				orderNumber: 42,
+				serie: '009',
+				stateCode: '25',
+			});
+			const { xml } = new BuildNfceXmlService().execute({
+				identity,
+				sale: snapshot,
+				issuedAt,
+				environment: '2',
+			});
+			expect(model).toBe('65');
+			expect(snapshot.recipient).toBeUndefined();
+			expect(xml).toContain('<tpAmb>2</tpAmb>');
+			expect(xml).toContain('<CNPJ>' + snapshot.issuer.cnpj + '</CNPJ>');
+			expect(xml).toContain('<IE>' + snapshot.issuer.ie + '</IE>');
+			expect(xml).toContain('<CRT>' + snapshot.issuer.crt + '</CRT>');
+			expect(xml).not.toContain('<dest>');
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it('rateia valores por centavo e declara Pix estático explicitamente', () => {
+		const { snapshot } = prepareFiscalSale(sale(), '2');
+		expect(snapshot.payment).toBe('20');
+		expect(snapshot.items.map(({ discount, freight }) => [discount, freight])).toEqual([
+			[50, 100],
+			[51, 101],
+		]);
+	});
+	it.each([
+		{ status: 'CANCELLED' },
+		{ paymentType: 'CREDIT_CARD' },
+		{ total: 20 },
+		{ user: null },
+	])('bloqueia operação sem dados compatíveis antes da sequência', override => {
+		expect(() => prepareFiscalSale(sale(override), '2')).toThrow();
+	});
 });

@@ -17,6 +17,7 @@ const XMLDSIG_NAMESPACE = 'http://www.w3.org/2000/09/xmldsig#';
 const SEFAZ_FISCAL_ID_PATTERN = /^NFe\d{44}$/;
 
 export interface SignXmlInput extends LoadDigitalCertificateInput {
+	issuerCnpj?: string;
 	referenceId: string;
 	xml: string;
 }
@@ -34,11 +35,13 @@ export class SignXmlService {
 	async sign(input: SignXmlInput): Promise<SignedFiscalXml> {
 		this.validateInputXml(input.xml, input.referenceId);
 
-		const certificate = await this.certificateService.load({
-			certificateBuffer: input.certificateBuffer,
-			certificatePassword: input.certificatePassword,
-			certificatePath: input.certificatePath,
-		});
+		const certificate = input.issuerCnpj
+			? await this.certificateService.loadForIssuer(input.issuerCnpj)
+			: await this.certificateService.load({
+					certificateBuffer: input.certificateBuffer,
+					certificatePassword: input.certificatePassword,
+					certificatePath: input.certificatePath,
+				});
 
 		const signature = new SignedXml({
 			canonicalizationAlgorithm: XML_CANONICALIZATION_ALGORITHMS.C14N_1_0,
@@ -65,6 +68,12 @@ export class SignXmlService {
 		const signedXml = signature.getSignedXml();
 
 		this.validateSignedXml(signedXml);
+		const verifier = new SignedXml({
+			publicCert: certificate.certificatePem,
+			getCertFromKeyInfo: () => null,
+		});
+		verifier.loadSignature(signature.getSignatureXml());
+		if (!verifier.checkSignature(signedXml)) throw new Error('Assinatura fiscal inválida.');
 
 		return {
 			certificateBase64: certificate.certificateBase64,

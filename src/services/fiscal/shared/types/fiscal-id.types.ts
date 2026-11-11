@@ -22,6 +22,7 @@ export interface FiscalAccessKeyInput {
 	issuerCnpj: string;
 	model: FiscalDocumentModel;
 	orderNumber: number;
+	numericCode?: string;
 	serie: string;
 	stateCode: string;
 }

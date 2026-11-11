@@ -1,6 +1,2 @@
-* text=auto eol=lf
-*.tgz binary
-*.png binary
-*.webp binary
-*.jpg binary
-*.mp3 binary
+# Preserve the official fiscal schema files byte for byte, including vendor whitespace.
+resources/fiscal/xsd/** -text -whitespace

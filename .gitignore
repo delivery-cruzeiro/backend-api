@@ -66,3 +66,4 @@ coverage/
 *.p12
 *.key
 *.pem
+!resources/fiscal/icp-brasil-v10.pem

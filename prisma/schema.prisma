@@ -237,6 +237,7 @@ model Store {
   ownerId      String       @map("owner_id")
   owner        User         @relation("StoreOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   cnpj         String?
+  fiscalProfile Json?       @map("fiscal_profile")
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
 
@@ -434,6 +435,9 @@ enum PaymentCardType {
 // ============================================
 
 model Category {
+  fiscalData Json? @map("fiscal_data")
+  fiscalOperationId String? @map("fiscal_operation_id")
+  fiscalOperation FiscalOperation? @relation(fields: [fiscalOperationId], references: [id], onDelete: Restrict)
   id          String   @id @default(cuid())
   name        String   @unique
   description String?
@@ -581,6 +585,8 @@ enum PrinterConnectionStatus {
 // ============================================
 
 model Product {
+  fiscalOperationId String? @map("fiscal_operation_id")
+  fiscalOperation FiscalOperation? @relation(fields: [fiscalOperationId], references: [id], onDelete: Restrict)
   id               String       @id @default(cuid())
   categoryId       String
   category         Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
@@ -590,6 +596,7 @@ model Product {
   description      String
   price            Decimal      @db.Decimal(10, 2)
   pricingMode      String       @default("FIXED") @map("pricing_mode")
+  fiscalData       Json?        @map("fiscal_data")
   imageUrl         String?
   imageUrls        String[] @default([])
   additionalFields Json         @default("[]") @map("additional_fields")
@@ -646,6 +653,7 @@ model ProductBadge {
 // ============================================
 
 model Order {
+  fiscalRecipient    Json?        @map("fiscal_recipient")
   scheduledAt DateTime? @map("scheduled_at")
   autoAcceptAt DateTime? @map("auto_accept_at")
   confirmedAt DateTime? @map("confirmed_at")
@@ -737,7 +745,16 @@ enum WhatsAppMessageOperation {
 model FiscalDocument {
   id            String               @id @default(cuid())
   orderId       String               @map("order_id")
-  order         Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order         Order                @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  environment   String?              @db.VarChar(1)
+  issuerCnpj    String?              @map("issuer_cnpj") @db.VarChar(14)
+  leaseUntil    DateTime?            @map("lease_until")
+  leaseToken    String?              @map("lease_token")
+  nextAttemptAt DateTime?            @map("next_attempt_at")
+  receipt       String?
+  authorizedXml String?              @map("authorized_xml")
+  authorizedHash String?             @map("authorized_hash")
+  authorizedAt  DateTime?            @map("authorized_at")
   type          FiscalDocumentType
   status        FiscalDocumentStatus @default(PENDING)
   model         String?              @db.VarChar(2)
@@ -758,6 +775,8 @@ model FiscalDocument {
   @@index([type])
   @@index([status])
   @@index([createdAt])
+  @@unique([orderId, environment])
+  @@index([status, nextAttemptAt])
   @@map("fiscal_documents")
 }
 
@@ -773,6 +792,7 @@ enum FiscalDocumentStatus {
   REJECTED
   CANCELED
   CONTINGENCY
+  AWAITING_SEFAZ
 }
 
 // ============================================
@@ -782,12 +802,14 @@ enum FiscalDocumentStatus {
 model FiscalSequence {
   id            String   @id @default(cuid())
   model         String   @db.VarChar(2)
+  issuerCnpj    String   @default("LEGACY") @map("issuer_cnpj") @db.VarChar(14)
+  environment   String   @default("0") @db.VarChar(1)
   serie         String   @default("009") @db.VarChar(3)
   currentNumber Int      @default(0) @map("current_number")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  @@unique([model, serie])
+  @@unique([issuerCnpj, environment, model, serie])
   @@map("fiscal_sequences")
 }
 
@@ -1161,4 +1183,26 @@ model StoreOperationSettings {
   settings Json
   updatedAt DateTime @updatedAt @map("updated_at")
   @@map("store_operation_settings")
+}
+
+model FiscalClassification {
+  id String @id @default(cuid())
+  name String @unique
+  ncm String @db.VarChar(8)
+  detail String
+  operations FiscalOperation[]
+  createdAt DateTime @default(now()) @map("created_at")
+  @@map("fiscal_classifications")
+}
+
+model FiscalOperation {
+  id String @id @default(cuid())
+  classificationId String @map("classification_id")
+  classification FiscalClassification @relation(fields: [classificationId], references: [id], onDelete: Restrict)
+  code String @db.VarChar(4)
+  label String
+  categories Category[]
+  products Product[]
+  @@unique([classificationId, code])
+  @@map("fiscal_operations")
 }

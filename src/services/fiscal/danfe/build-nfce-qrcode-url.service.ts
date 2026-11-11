@@ -1,40 +1,36 @@
-import { createHash } from 'node:crypto';
-
-const NFCE_QRCODE_VERSION = '2';
-const PB_PRODUCTION_QRCODE_URL = 'https://www.sefaz.pb.gov.br/nfce/qrcode';
-const PB_HOMOLOGATION_QRCODE_URL = 'https://www.sefaz.pb.gov.br/nfce/qrcode-homolog';
-
-interface BuildNfceQrCodeUrlInput {
-	accessKey: string;
-	environment: string;
-}
+import type { FiscalEnvironment } from '../shared/types/fiscal-emission.types.js';
 
 export class BuildNfceQrCodeUrlService {
-	execute(input: BuildNfceQrCodeUrlInput) {
-		const cscId = process.env.CSC_ID;
-		const csc =
-			input.environment === '1' ? process.env.CSC_PRODUCTION : process.env.CSC_HOMOLOGATION;
-
-		if (!cscId || !csc) {
+	buildOnline(accessKey: string, environment: FiscalEnvironment) {
+		const production = environment === '1';
+		const qr = production
+			? process.env.NFCE_QRCODE_URL_PRODUCTION
+			: process.env.NFCE_QRCODE_URL_HOMOLOGATION;
+		const urlChave = production
+			? process.env.NFCE_ACCESS_KEY_URL_PRODUCTION
+			: process.env.NFCE_ACCESS_KEY_URL_HOMOLOGATION;
+		if (!qr || !urlChave || !officialUrl(qr) || !officialUrl(urlChave)) {
 			throw new Error(
-				'Configuracao do QRCode NFC-e incompleta. Informe CSC_ID e CSC_PRODUCTION/CSC_HOMOLOGATION.'
+				'Configure as URLs oficiais do QR Code e da consulta por chave para a NFC-e.'
 			);
 		}
-
-		const baseUrl = this.resolveBaseUrl(input.environment);
-		const basePayload = [input.accessKey, NFCE_QRCODE_VERSION, input.environment, cscId].join(
-			'|'
-		);
-		const hash = createHash('sha1').update(`${basePayload}${csc}`).digest('hex').toUpperCase();
-
-		return `${baseUrl}?p=${basePayload}|${hash}`;
+		return { qrCode: qr + '?p=' + [accessKey, '3', environment].join('|'), urlChave };
 	}
+}
 
-	private resolveBaseUrl(environment: string) {
-		if (environment === '1') {
-			return process.env.NFCE_QRCODE_URL_PRODUCTION ?? PB_PRODUCTION_QRCODE_URL;
-		}
-
-		return process.env.NFCE_QRCODE_URL_HOMOLOGATION ?? PB_HOMOLOGATION_QRCODE_URL;
+function officialUrl(value: string) {
+	try {
+		const url = new URL(value);
+		return (
+			/^(https?:)$/.test(url.protocol) &&
+			!url.search &&
+			!url.hash &&
+			!url.port &&
+			!url.username &&
+			!url.password &&
+			/(^|\.)sefaz\.pb\.gov\.br$/i.test(url.hostname)
+		);
+	} catch {
+		return false;
 	}
 }

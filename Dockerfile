@@ -11,14 +11,16 @@ FROM dependencies AS build
 COPY tsconfig.json prisma.config.ts ./
 COPY prisma ./prisma
 COPY src ./src
+COPY resources ./resources
 RUN DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm prisma:generate
 RUN pnpm build
 FROM node:22.22.0-alpine AS production
 WORKDIR /app
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=4000
-RUN apk add --no-cache openssl
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=4000 FISCAL_XSD_DIR=/app/resources/fiscal/xsd/PL_010g_v1.03
+RUN apk add --no-cache openssl libxml2-utils
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/resources ./resources
 COPY --from=build --chown=node:node /app/prisma ./prisma
 COPY --from=build --chown=node:node /app/prisma.config.ts ./
 COPY --from=build --chown=node:node /app/package.json ./

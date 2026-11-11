@@ -1,32 +1,62 @@
-import type { FiscalDocumentStatus, FiscalDocumentType } from '@prisma/client';
-import type { FiscalSaleRecord } from '../../../../repositories/sales.repository.js';
-import type { DanfeNfcePrintPayload } from '../../danfe/danfe-nfce.types.js';
+import type { FiscalDocumentType } from '@prisma/client';
 import type { FiscalIdentity } from './fiscal-id.types.js';
 
-export interface FiscalIssuerConfig {
-	address: {
-		city: string;
-		complement: string | null;
-		neighborhood: string;
-		number: string;
-		state: string;
-		street: string;
-		zipCode: string;
-	};
+export type FiscalEnvironment = '1' | '2';
+export type FiscalAddress = {
+	street: string;
+	number: string;
+	neighborhood: string;
+	city: string;
 	cityCode: string;
-	cnpj: string;
-	name: string;
-	phoneNumber: string | null;
-	stateCode: string;
-	storeId: string;
-	tradeName: string;
+	state: string;
+	zipCode: string;
+	complement?: string;
+};
+
+export interface FiscalSaleSnapshot {
+	issuer: {
+		cnpj: string;
+		ie: string;
+		crt: '1';
+		name: string;
+		tradeName: string;
+		address: FiscalAddress;
+	};
+	recipient?: {
+		id: string;
+		name: string;
+		taxIndicator: '1' | '2' | '9';
+		ie?: string;
+		address?: FiscalAddress;
+	};
+	items: Array<{
+		code: string;
+		name: string;
+		ncm: string;
+		cfop: string;
+		unit: string;
+		origin: string;
+		gtin: string;
+		quantity: number;
+		csosn: '102' | '500';
+		pisCst: '99';
+		cofinsCst: '99';
+		price: number;
+		freight: number;
+		discount: number;
+	}>;
+	total: number;
+	payment: '01' | '20';
+	delivery: boolean;
+	finalConsumer: boolean;
+	orderNumber: number;
 }
 
 export interface FiscalXmlBuildInput {
 	identity: FiscalIdentity;
-	issuer: FiscalIssuerConfig;
-	sale: FiscalSaleRecord;
-	test?: boolean;
+	sale: FiscalSaleSnapshot;
+	issuedAt: Date;
+	environment: FiscalEnvironment;
 }
 
 export interface FiscalXmlBuildResult {
@@ -34,52 +64,25 @@ export interface FiscalXmlBuildResult {
 	xml: string;
 }
 
-export interface SefazTransmitInput {
+export interface SefazDocumentInput {
 	documentType: FiscalDocumentType;
-	signedXml: string;
-	test?: boolean;
-}
-
-export interface SefazTransmitResult {
-	connectionError?: boolean;
-	protocol?: string;
-	rawResponse?: string;
-	status: 'AUTHORIZED' | 'REJECTED';
-	statusCode?: string;
-	statusMessage?: string;
-}
-
-export interface FiscalEmissionDocument {
-	accessKey: string | null;
-	emissionType: string | null;
-	fiscalNumber: string | null;
-	id: string;
-	model: string | null;
-	orderId: string;
-	protocol: string | null;
-	qrCodeUrl: string | null;
-	serie: string | null;
-	status: FiscalDocumentStatus;
-	type: FiscalDocumentType;
-	xmlPath: string | null;
-}
-
-export interface FiscalEmissionSuccess {
 	accessKey: string;
-	danfe?: DanfeNfcePrintPayload;
-	document: FiscalEmissionDocument;
-	fiscalId: string;
-	message: string;
-	protocol?: string;
-	signedXml?: string;
-	status: FiscalDocumentStatus;
-	success: true;
+	environment: FiscalEnvironment;
+	issuerCnpj: string;
 }
 
-export interface FiscalEmissionFailure {
-	error: string;
-	statusCode: 400 | 404 | 500;
-	success: false;
+export interface SefazTransmitInput extends SefazDocumentInput {
+	signedXml: string;
+	batchId: string;
 }
 
-export type FiscalEmissionResult = FiscalEmissionFailure | FiscalEmissionSuccess;
+export type SefazTransmitResult =
+	| {
+			status: 'AUTHORIZED';
+			protocol: string;
+			protocolXml: string;
+			authorizedAt: Date;
+			statusCode: string;
+	  }
+	| { status: 'AWAITING_SEFAZ'; receipt?: string; statusCode?: string; statusMessage: string }
+	| { status: 'REJECTED'; statusCode: string; statusMessage: string };

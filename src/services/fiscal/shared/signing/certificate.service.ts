@@ -1,7 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { createPrivateKey, X509Certificate } from 'node:crypto';
-import type { Writable } from 'node:stream';
 
 export const DEFAULT_DIGITAL_CERTIFICATES_DIRECTORY = '/run/secrets';
 
@@ -14,11 +13,34 @@ export interface LoadDigitalCertificateInput {
 export interface LoadedDigitalCertificate {
 	certificateBase64: string;
 	certificatePem: string;
+	transportCertificatePem: string;
 	privateKeyPem: string;
 	source: 'buffer' | 'file';
 }
 
 export class CertificateService {
+	async loadForIssuer(cnpj: string): Promise<LoadedDigitalCertificate> {
+		const pinned = process.env.FISCAL_CERTIFICATE_FINGERPRINT?.replace(/:/g, '').toUpperCase();
+		if (
+			cnpj !== process.env.FISCAL_CERTIFICATE_ISSUER_CNPJ ||
+			!pinned ||
+			!/^[\dA-F]{64}$/.test(pinned)
+		) {
+			throw new Error('Credencial fiscal não configurada para o CNPJ do emitente.');
+		}
+		const loaded = await this.load();
+		const cert = new X509Certificate(loaded.certificatePem);
+		const now = Date.now();
+		if (
+			cert.fingerprint256.replace(/:/g, '') !== pinned ||
+			now < Date.parse(cert.validFrom) ||
+			now >= Date.parse(cert.validTo)
+		) {
+			throw new Error('Certificado fiscal vencido ou diferente da credencial cadastrada.');
+		}
+		return loaded;
+	}
+
 	async load(input: LoadDigitalCertificateInput = {}): Promise<LoadedDigitalCertificate> {
 		const certificateBuffer =
 			input.certificateBuffer ?? (await this.readCertificateFile(input));
@@ -29,11 +51,10 @@ export class CertificateService {
 		)?.[0];
 		if (!keyPem) throw new Error('Chave privada nao encontrada no certificado digital A1');
 		const privateKey = createPrivateKey(keyPem);
-		const certificate = (
+		const certificates = (
 			pem.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) ?? []
-		)
-			.map(value => new X509Certificate(value))
-			.find(value => value.checkPrivateKey(privateKey));
+		).map(value => new X509Certificate(value));
+		const certificate = certificates.find(value => value.checkPrivateKey(privateKey));
 		if (!certificate)
 			throw new Error(
 				'Certificado publico correspondente a chave privada nao encontrado no arquivo A1'
@@ -44,6 +65,7 @@ export class CertificateService {
 		return {
 			certificateBase64: normalizeCertificateBase64(certificatePem),
 			certificatePem,
+			transportCertificatePem: certificateChain(certificate, certificates),
 			privateKeyPem,
 			source: input.certificateBuffer ? 'buffer' : 'file',
 		};
@@ -60,17 +82,44 @@ export class CertificateService {
 	}
 }
 
+function certificateChain(leaf: X509Certificate, certificates: X509Certificate[]) {
+	const chain = [leaf];
+	let current = leaf;
+	for (;;) {
+		const issuer = certificates.find(
+			candidate =>
+				!chain.includes(candidate) &&
+				current.checkIssued(candidate) &&
+				current.verify(candidate.publicKey)
+		);
+		if (!issuer || issuer.issuer === issuer.subject) break;
+		chain.push(issuer);
+		current = issuer;
+	}
+	return chain.map(certificate => certificate.toString()).join('\n');
+}
+
 function extractPkcs12(buffer: Buffer, password: string): Promise<string> {
-	// OpenSSL password descriptors are line based. Never silently truncate a password.
 	if (/[\r\n\0]/.test(password))
 		throw new Error('Senha do certificado A1 contem caracteres invalidos');
 	return new Promise((resolve, reject) => {
-		const child = spawn('openssl', ['pkcs12', '-legacy', '-noenc', '-passin', 'fd:3'], {
-			stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
-			shell: false,
-			windowsHide: true,
-			timeout: 10_000,
-		});
+		const child = spawn(
+			'openssl',
+			['pkcs12', '-legacy', '-noenc', '-passin', 'env:FISCAL_PFX_INPUT'],
+			{
+				env: {
+					PATH: process.env.PATH,
+					SystemRoot: process.env.SystemRoot,
+					OPENSSL_CONF: process.env.OPENSSL_CONF,
+					OPENSSL_MODULES: process.env.OPENSSL_MODULES,
+					FISCAL_PFX_INPUT: password,
+				},
+				stdio: ['pipe', 'pipe', 'pipe'],
+				shell: false,
+				windowsHide: true,
+				timeout: 10_000,
+			}
+		);
 		const chunks: Buffer[] = [];
 		let size = 0;
 		const failure = () =>
@@ -94,10 +143,7 @@ function extractPkcs12(buffer: Buffer, password: string): Promise<string> {
 		child.on('close', code =>
 			code === 0 ? resolve(Buffer.concat(chunks).toString('utf8')) : failure()
 		);
-		const passwordPipe = child.stdio[3] as Writable;
-		passwordPipe.on('error', failure);
 		child.stdin.on('error', failure);
-		passwordPipe.end(password + '\n');
 		child.stdin.end(buffer);
 	});
 }

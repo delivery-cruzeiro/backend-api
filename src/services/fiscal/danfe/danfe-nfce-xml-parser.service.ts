@@ -1,6 +1,5 @@
 import { DOMParser } from '@xmldom/xmldom';
 import type { DanfeNfceData } from './danfe-nfce.types.js';
-import { BuildNfceQrCodeUrlService } from './build-nfce-qrcode-url.service.js';
 
 type XmlDocument = ReturnType<InstanceType<typeof DOMParser>['parseFromString']>;
 type XmlElement = NonNullable<ReturnType<ReturnType<XmlDocument['getElementsByTagName']>['item']>>;
@@ -13,8 +12,6 @@ interface ParseDanfeNfceInput {
 }
 
 export class DanfeNfceXmlParserService {
-	constructor(private readonly qrCodeUrlBuilder = new BuildNfceQrCodeUrlService()) {}
-
 	execute(input: ParseDanfeNfceInput): DanfeNfceData {
 		const document = new DOMParser().parseFromString(input.xml, 'text/xml');
 		const infNFe = firstElement(document, 'infNFe');
@@ -25,7 +22,8 @@ export class DanfeNfceXmlParserService {
 
 		const accessKey = infNFe.getAttribute('Id')?.replace(/^NFe/, '') ?? '';
 		const environment = text(infNFe, 'tpAmb') || '2';
-		const qrCodeUrl = this.qrCodeUrlBuilder.execute({ accessKey, environment });
+		const qrCodeUrl = text(document, 'qrCode');
+		if (!qrCodeUrl) throw new Error('O XML da NFC-e não contém o QR Code.');
 		const protocol = input.protocol ?? text(document, 'nProt') ?? null;
 		const authorizationDate = input.authorizationDate ?? text(document, 'dhRecbto') ?? null;
 
@@ -86,6 +84,7 @@ function paymentTypeLabel(code: string) {
 		'03': 'Cartao de credito',
 		'04': 'Cartao de debito',
 		'17': 'Pix',
+		'20': 'Pix estático',
 		'90': 'Sem pagamento',
 	};
 

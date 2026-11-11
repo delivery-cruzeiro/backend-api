@@ -6,6 +6,7 @@ import type {
 	FiscalIdentity,
 } from '../types/fiscal-id.types.js';
 import { FiscalCheckDigitService } from './fiscal-check-digit.service.js';
+import { toFiscalDateTime } from '../xml/fiscal-xml.helpers.js';
 
 const STATE_CODE_LENGTH = 2;
 const MONTH_YEAR_LENGTH = 4;
@@ -66,7 +67,9 @@ export class FiscalAccessKeyBuilderService {
 			input.emissionType,
 			EMISSION_TYPE_LENGTH
 		);
-		const numericCode = formatOrderNumericCode(input.orderNumber);
+		const numericCode = input.numericCode
+			? assertFixedDigits('Código numérico fiscal', input.numericCode, NUMERIC_CODE_LENGTH)
+			: formatOrderNumericCode(input.orderNumber);
 		const partialKey = `${stateCode}${monthYear}${issuerCnpj}${model}${serie}${fiscalNumber}${emissionType}${numericCode}`;
 
 		if (partialKey.length !== ACCESS_KEY_WITHOUT_DIGIT_LENGTH) {
@@ -89,8 +92,9 @@ function formatMonthYear(date: Date) {
 		throw new Error('Data de emissao fiscal invalida');
 	}
 
-	const year = String(date.getFullYear()).slice(-2);
-	const month = String(date.getMonth() + 1).padStart(2, '0');
+	const local = toFiscalDateTime(date);
+	const year = local.slice(2, 4);
+	const month = local.slice(5, 7);
 
 	return assertFixedDigits('AAMM', `${year}${month}`, MONTH_YEAR_LENGTH);
 }

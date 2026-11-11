@@ -1,5 +1,4 @@
-import { createHash } from 'node:crypto';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BuildNfceQrCodeUrlService } from '../../src/services/fiscal/danfe/build-nfce-qrcode-url.service.js';
 import { GenerateDanfeNfceService } from '../../src/services/fiscal/danfe/generate-danfe-nfce.service.js';
 
@@ -48,33 +47,22 @@ const nfceXml = `
       </detPag>
     </pag>
   </infNFe>
+  <infNFeSupl><qrCode>https://www.sefaz.pb.gov.br/nfcehom?p=25260518016122000131650090000000011000182730|3|2</qrCode><urlChave>https://www.sefaz.pb.gov.br/nfcehom</urlChave></infNFeSupl>
 </NFe>`;
 
 describe('DANFE NFC-e', () => {
 	beforeEach(() => {
-		process.env.CSC_ID = '1';
-		process.env.CSC_HOMOLOGATION = 'ABC123XYZ456';
-		process.env.NFCE_QRCODE_URL_HOMOLOGATION = 'https://sefaz.example/nfce/qrcode';
+		vi.stubEnv('NFCE_QRCODE_URL_HOMOLOGATION', 'https://www.sefaz.pb.gov.br/nfcehom');
+		vi.stubEnv('NFCE_ACCESS_KEY_URL_HOMOLOGATION', 'https://www.sefaz.pb.gov.br/nfcehom');
 	});
+	afterEach(() => vi.unstubAllEnvs());
 
-	afterEach(() => {
-		delete process.env.CSC_ID;
-		delete process.env.CSC_HOMOLOGATION;
-		delete process.env.NFCE_QRCODE_URL_HOMOLOGATION;
-	});
-
-	it('monta URL do QRCode com hash CSC em SHA1', () => {
-		const service = new BuildNfceQrCodeUrlService();
+	it('monta o QR Code online versão 3 no ambiente da nota', () => {
 		const accessKey = '25260518016122000131650090000000011000182730';
-		const payload = `${accessKey}|2|2|1`;
-		const hash = createHash('sha1')
-			.update(`${payload}ABC123XYZ456`)
-			.digest('hex')
-			.toUpperCase();
-
-		expect(service.execute({ accessKey, environment: '2' })).toBe(
-			`https://sefaz.example/nfce/qrcode?p=${payload}|${hash}`
-		);
+		expect(new BuildNfceQrCodeUrlService().buildOnline(accessKey, '2')).toEqual({
+			qrCode: 'https://www.sefaz.pb.gov.br/nfcehom?p=' + accessKey + '|3|2',
+			urlChave: 'https://www.sefaz.pb.gov.br/nfcehom',
+		});
 	});
 
 	it('gera payload ESC/POS em base64 com dados fiscais e QRCode', () => {
@@ -93,7 +81,9 @@ describe('DANFE NFC-e', () => {
 			encoding: 'base64',
 			format: 'ESC_POS',
 		});
-		expect(result.qrCodeUrl).toContain('https://sefaz.example/nfce/qrcode?p=');
+		expect(result.qrCodeUrl).toBe(
+			'https://www.sefaz.pb.gov.br/nfcehom?p=25260518016122000131650090000000011000182730|3|2'
+		);
 		expect(bytes.subarray(0, 2)).toEqual(Buffer.from([0x1b, 0x40]));
 		expect(bytes.includes(0x1d)).toBe(true);
 		expect(printable).toContain('DANFE NFC-e');
@@ -101,15 +91,11 @@ describe('DANFE NFC-e', () => {
 		expect(printable).toContain('Protocolo 123456789');
 	});
 
-	it('falha claramente quando CSC nao esta configurado', () => {
-		delete process.env.CSC_HOMOLOGATION;
-		const service = new BuildNfceQrCodeUrlService();
-
+	it('bloqueia a impressão de XML sem o QR Code original', () => {
 		expect(() =>
-			service.execute({
-				accessKey: '25260518016122000131650090000000011000182730',
-				environment: '2',
+			new GenerateDanfeNfceService().execute({
+				xml: nfceXml.replace(/<infNFeSupl>.*<\/infNFeSupl>/, ''),
 			})
-		).toThrow('CSC_ID e CSC_PRODUCTION/CSC_HOMOLOGATION');
+		).toThrow('O XML da NFC-e não contém o QR Code.');
 	});
 });

@@ -1,18 +1,15 @@
-import { BuildNfeXmlService } from '../nfe/build-nfe-xml.service.js';
-import type {
-	FiscalXmlBuildInput,
-	FiscalXmlBuildResult,
-} from '../shared/types/fiscal-emission.types.js';
+import type { FiscalXmlBuildInput } from '../shared/types/fiscal-emission.types.js';
+import { buildSaleXml } from '../shared/xml/fiscal-xml.helpers.js';
+import { BuildNfceQrCodeUrlService } from '../danfe/build-nfce-qrcode-url.service.js';
 
 export class BuildNfceXmlService {
-	constructor(private readonly nfeXmlBuilder = new BuildNfeXmlService()) {}
+	constructor(private readonly qr = new BuildNfceQrCodeUrlService()) {}
 
-	execute(input: FiscalXmlBuildInput): FiscalXmlBuildResult {
-		const result = this.nfeXmlBuilder.execute(input);
-
-		return {
-			referenceId: result.referenceId,
-			xml: result.xml.replace('<tpImp>1</tpImp>', '<tpImp>4</tpImp>'),
-		};
+	execute(input: FiscalXmlBuildInput) {
+		return buildSaleXml(input, {
+			print: 4,
+			presence: input.sale.delivery ? 4 : 1,
+			supplement: this.qr.buildOnline(input.identity.accessKey, input.environment),
+		});
 	}
 }

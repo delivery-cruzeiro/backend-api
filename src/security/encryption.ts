@@ -20,7 +20,7 @@ export function decryptValue(value: string) {
 }
 const fields:Record<string,Set<string>> = {
  User:new Set(['phone']), Account:new Set(['accessToken','refreshToken','idToken']),
- PaymentMethod:new Set(['providerId','cardHolder']), FiscalDocument:new Set(['xmlContent']),
+ PaymentMethod:new Set(['providerId','cardHolder']), FiscalDocument:new Set(['xmlContent','authorizedXml']),
 };
 export function encryptData(model: string, value: unknown): unknown {
  if (Array.isArray(value)) return value.map(x=>encryptData(model,x));

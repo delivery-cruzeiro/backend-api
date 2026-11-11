@@ -12,3 +12,4 @@
 **/*.p12
 **/*.key
 **/Certificados digitais
+!resources/fiscal/icp-brasil-v10.pem
