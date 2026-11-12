@@ -44,10 +44,12 @@ export function composeProductAdditionalFields(input: {
 	category?: AdditionalFieldOwner | null;
 	product: AdditionalFieldOwner;
 	subcategory?: AdditionalFieldOwner | null;
+	subcategories?: AdditionalFieldOwner[];
 }): EffectiveProductAdditionalFieldDTO[] {
 	return [
 		...withOrigin(input.product, ProductAdditionalFieldSource.PRODUCT),
 		...withOrigin(input.category, ProductAdditionalFieldSource.CATEGORY),
-		...withOrigin(input.subcategory, ProductAdditionalFieldSource.SUBCATEGORY),
+		...[...new Map([...(input.subcategory ? [input.subcategory] : []), ...(input.subcategories ?? [])].map(owner => [owner.id, owner])).values()]
+			.flatMap(owner => withOrigin(owner, ProductAdditionalFieldSource.SUBCATEGORY)),
 	];
 }

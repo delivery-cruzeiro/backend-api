@@ -33,3 +33,12 @@ describe('composeProductAdditionalFields', () => {
 		expect(composeProductAdditionalFields({ category, product: { additionalFields: [], id: 'prod-1' } })).toEqual([]);
 	});
 });
+
+it('inherits fields from every subcategory without duplicating the legacy membership', () => {
+  const first = { id: 'first', additionalFields: [field('same', 'Primeira')] };
+  const second = { id: 'second', additionalFields: [field('same', 'Segunda')] };
+  const fields = composeProductAdditionalFields({ product: { id: 'p', additionalFields: [] }, subcategory: first, subcategories: [first, second] });
+  expect(fields).toHaveLength(2);
+  expect(fields.map(item => item.sourceId)).toEqual(['first', 'second']);
+  expect(new Set(fields.map(item => item.id)).size).toBe(2);
+});

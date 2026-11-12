@@ -32,6 +32,10 @@ const productSelect = {
 		},
 	},
 	subcategoryId: true,
+	subcategories: {
+		select: { additionalFields: true, id: true, name: true },
+		orderBy: [{ order: "asc" as const }, { name: "asc" as const }],
+	},
 	subcategory: {
 		select: {
 			additionalFields: true,
@@ -144,6 +148,9 @@ function normalizeProductInput(fields: Record<string, unknown>) {
 			additionalFields: parseJsonArrayField(fields.additionalFields),
 		}),
 		...(fields.categoryId !== undefined && { categoryId: fields.categoryId }),
+		...(fields.subcategoryIds !== undefined && {
+			subcategoryIds: parseStringArrayField(fields.subcategoryIds),
+		}),
 		...(fields.subcategoryId !== undefined && {
 			subcategoryId: fields.subcategoryId || null,
 		}),
@@ -226,6 +233,7 @@ type ProductWithBadges = {
 	price: unknown;
 	pricingMode: string;
 	subcategory: { additionalFields: unknown; id: string; name: string } | null;
+	subcategories?: Array<{ additionalFields: unknown; id: string; name: string }>;
 	[key: string]: unknown;
 };
 
@@ -233,10 +241,12 @@ function serializeProduct(product: ProductWithBadges, storeId?: string) {
 	const { badges, ...data } = product;
 	return {
 		...data,
+		subcategoryIds: [...new Set([...(product.subcategory ? [product.subcategory.id] : []), ...(product.subcategories ?? []).map(subcategory => subcategory.id)])],
 		additionalFields: composeProductAdditionalFields({
 			category: product.category,
 			product,
 			subcategory: product.subcategory,
+			subcategories: product.subcategories,
 		}),
 		badges: badges
 			.map(item => item.badge)
@@ -244,6 +254,11 @@ function serializeProduct(product: ProductWithBadges, storeId?: string) {
 		price: Number(product.price),
 		pricingMode: product.pricingMode,
 	};
+}
+
+async function subcategoriesBelongToCategory(ids: string[], categoryId: string) {
+	if (!ids.length) return true;
+	return await prisma.subcategory.count({ where: { id: { in: ids }, categoryId } }) === ids.length;
 }
 
 async function ensureBadgesExistForStores(badgeIds: string[], storeIds: string[]) {
@@ -317,6 +332,7 @@ export const createProduct = async (
 			pricingMode,
 			storeIds,
 			subcategoryId,
+			subcategoryIds,
 			additionalFields = [],
 			unavailable = false,
 		} = validation.data;
@@ -345,17 +361,9 @@ export const createProduct = async (
 			});
 		}
 
-		if (subcategoryId) {
-			const subcategory = await prisma.subcategory.findUnique({
-				where: { id: subcategoryId },
-				select: { categoryId: true },
-			});
-
-			if (!subcategory || subcategory.categoryId !== categoryId) {
-				return reply.status(404).send({
-					error: 'Subcategoria nao encontrada para esta categoria',
-				});
-			}
+		const uniqueSubcategoryIds = [...new Set(subcategoryIds ?? (subcategoryId ? [subcategoryId] : []))];
+		if (!(await subcategoriesBelongToCategory(uniqueSubcategoryIds, categoryId))) {
+			return reply.status(404).send({ error: 'Subcategoria nao encontrada para esta categoria' });
 		}
 
 		const imageUrl = image
@@ -382,7 +390,8 @@ export const createProduct = async (
 				order,
 				price,
 				pricingMode,
-				subcategoryId,
+				subcategoryId: uniqueSubcategoryIds[0] ?? null,
+				subcategories: { connect: uniqueSubcategoryIds.map(id => ({ id })) },
 				stores: buildStoreConnect(storeIds),
 			},
 			select: productSelect,
@@ -452,17 +461,13 @@ export const updateProduct = async (
 
 		const nextCategoryId = validation.data.categoryId ?? existingProduct.categoryId;
 
-		if (validation.data.subcategoryId) {
-			const subcategory = await prisma.subcategory.findUnique({
-				where: { id: validation.data.subcategoryId },
-				select: { categoryId: true },
-			});
-
-			if (!subcategory || subcategory.categoryId !== nextCategoryId) {
-				return reply.status(404).send({
-					error: 'Subcategoria nao encontrada para esta categoria',
-				});
-			}
+		const uniqueSubcategoryIds = validation.data.subcategoryIds !== undefined
+			? [...new Set(validation.data.subcategoryIds)]
+			: validation.data.subcategoryId !== undefined
+				? (validation.data.subcategoryId ? [validation.data.subcategoryId] : [])
+				: nextCategoryId !== existingProduct.categoryId ? [] : undefined;
+		if (uniqueSubcategoryIds && !(await subcategoriesBelongToCategory(uniqueSubcategoryIds, nextCategoryId))) {
+			return reply.status(404).send({ error: 'Subcategoria nao encontrada para esta categoria' });
 		}
 
 		if (validation.data.storeIds !== undefined) {
@@ -507,6 +512,8 @@ export const updateProduct = async (
 		const productData = { ...validation.data };
 		delete productData.badgeIds;
 		delete productData.storeIds;
+		delete productData.subcategoryIds;
+		delete productData.subcategoryId;
 
 		const product = await saveWithImages(validation.data, imageUrl, images => prisma.product.update({
 			where: { id },
@@ -518,8 +525,10 @@ export const updateProduct = async (
 						create: uniqueBadgeIds.map(badgeId => ({ badgeId })),
 					},
 				}),
-				...(productData.categoryId &&
-					productData.subcategoryId === undefined && { subcategoryId: null }),
+				...(uniqueSubcategoryIds !== undefined && {
+					subcategoryId: uniqueSubcategoryIds[0] ?? null,
+					subcategories: { set: uniqueSubcategoryIds.map(id => ({ id })) },
+				}),
 				stores: buildStoreSet(storeIds),
 				...images,
 			},

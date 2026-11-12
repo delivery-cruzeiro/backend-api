@@ -73,6 +73,8 @@ const productResponseSchema = {
 				name: { type: 'string' },
 			},
 		},
+		subcategoryIds: { type: 'array', items: { type: 'string' } },
+		subcategories: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' } } } },
 		subcategoryId: { type: 'string', nullable: true },
 		subcategory: {
 			type: 'object',

@@ -158,6 +158,7 @@ export class ClientOrderService {
 						category: product.category,
 						product,
 						subcategory: product.subcategory,
+						subcategories: product.subcategories,
 					})
 					: [],
 				item.additionalFieldValues

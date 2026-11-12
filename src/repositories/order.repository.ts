@@ -72,6 +72,7 @@ export const adminOrderSelect = {
 					imageUrl: true,
 					categoryId: true,
 					subcategoryId: true,
+					subcategories: { select: { id: true, name: true } },
 					category: { select: { name: true, additionalFields: true } },
 					subcategory: { select: { name: true, additionalFields: true } },
 				},
@@ -168,6 +169,7 @@ export const clientOrderSelect = {
 					imageUrl: true,
 					categoryId: true,
 					subcategoryId: true,
+					subcategories: { select: { id: true, name: true } },
 					category: { select: { name: true } },
 					subcategory: { select: { name: true } },
 				},
@@ -231,6 +233,7 @@ export interface ClientOrderRepository {
 			price: unknown;
 			pricingMode?: string;
 			subcategory: { additionalFields: Prisma.JsonValue; id: string } | null;
+			subcategories?: Array<{ additionalFields: Prisma.JsonValue; id: string }>;
 		}>
 	>;
 	findActiveStoreById(id: string): Promise<{ addressId: string; id: string; operationSettings?: { settings: Prisma.JsonValue } | null } | null>;
@@ -419,6 +422,7 @@ export class PrismaClientOrderRepository implements ClientOrderRepository {
 				id: true,
 				price: true,
 				subcategory: { select: { additionalFields: true, id: true } },
+			subcategories: { select: { additionalFields: true, id: true }, orderBy: [{ order: "asc" }, { name: "asc" }] },
 			},
 		});
 	}

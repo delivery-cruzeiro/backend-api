@@ -497,6 +497,7 @@ model Subcategory {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  linkedProducts Product[] @relation("ProductSubcategories")
   menus    Menu[]    @relation("MenuSubcategories")
   products Product[]
   printerSubcategories PrinterSubcategory[]
@@ -592,6 +593,7 @@ model Product {
   category         Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   subcategoryId    String?
   subcategory      Subcategory? @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
+  subcategories    Subcategory[] @relation("ProductSubcategories")
   name             String
   description      String
   price            Decimal      @db.Decimal(10, 2)
