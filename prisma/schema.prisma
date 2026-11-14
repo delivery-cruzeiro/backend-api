@@ -513,6 +513,8 @@ model Subcategory {
 // ============================================
 
 model PrinterConfiguration {
+  fiscalLayout Json? @map("fiscal_layout")
+  isFiscal Boolean @default(false) @map("is_fiscal")
   transport String @default("WEB_SERIAL")
   windowsQueueId String? @map("windows_queue_id")
   windowsQueueName String? @map("windows_queue_name")

@@ -65,7 +65,9 @@ export class EscPosBuilderService {
 	}
 
 	private line(value: string) {
-		return concat([this.encoder.encode(normalizeLine(value).slice(0, COLUMNS)), this.feed()]);
+		const text = normalizeLine(value);
+		const lines = text.match(new RegExp(`.{1,${COLUMNS}}`, 'g')) ?? [''];
+		return concat(lines.flatMap(line => [this.encoder.encode(line), this.feed()]));
 	}
 
 	private separator() {

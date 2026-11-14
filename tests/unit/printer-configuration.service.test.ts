@@ -1,5 +1,9 @@
 import { UserRole } from '@delivery-cruzeiro/types';
-import { PrinterConnectionStatus, resolvePrinterReceiptLayout } from '@delivery-cruzeiro/types';
+import {
+	PrinterConnectionStatus,
+	resolvePrinterReceiptLayout,
+	resolveFiscalPrintLayout,
+} from '@delivery-cruzeiro/types';
 import { describe, expect, it, vi } from 'vitest';
 import type {
 	PrinterConfigurationRecord,
@@ -36,6 +40,8 @@ function record(data: Partial<PrinterConfigurationRecord> = {}): PrinterConfigur
 		isPrimary: false,
 		receiptSections: ['customer', 'address', 'payment', 'notes', 'totals'],
 		receiptLayout: null,
+		fiscalLayout: null,
+		isFiscal: false,
 		createdAt: new Date('2026-09-03T12:00:00Z'),
 		updatedAt: new Date('2026-09-03T12:00:00Z'),
 		categories: [],
@@ -63,6 +69,20 @@ function repository(overrides: Partial<PrinterConfigurationRepository> = {}) {
 const actor = { id: 'user-1', role: UserRole.ADMIN };
 
 describe('PrinterConfigurationService', () => {
+	it('saves only fiscal preferences without making the destination primary for orders', async () => {
+		const repo = repository();
+		const data = { fiscalLayout: resolveFiscalPrintLayout(), isFiscal: true };
+		await new PrinterConfigurationService(repo).update('printer-1', data, actor);
+		expect(repo.update).toHaveBeenCalledWith('printer-1', data);
+		expect(repo.setPrimary).not.toHaveBeenCalled();
+	});
+	it('blocks fiscal changes to printers outside the actor store', async () => {
+		const repo = repository({ hasStoreAccess: vi.fn().mockResolvedValue(false) });
+		await expect(
+			new PrinterConfigurationService(repo).update('printer-1', { isFiscal: true }, actor)
+		).rejects.toMatchObject({ statusCode: 404 });
+		expect(repo.update).not.toHaveBeenCalled();
+	});
 	it('saves layout and assignments together and keeps explicit disabled groups', async () => {
 		const repo = repository();
 		const layout = resolvePrinterReceiptLayout({});

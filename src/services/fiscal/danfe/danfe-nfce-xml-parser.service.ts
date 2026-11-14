@@ -26,22 +26,56 @@ export class DanfeNfceXmlParserService {
 		if (!qrCodeUrl) throw new Error('O XML da NFC-e não contém o QR Code.');
 		const protocol = input.protocol ?? text(document, 'nProt') ?? null;
 		const authorizationDate = input.authorizationDate ?? text(document, 'dhRecbto') ?? null;
+		const dest = firstElement(infNFe, 'dest');
+		const totals = firstElement(infNFe, 'ICMSTot');
+		const emit = firstElement(infNFe, 'emit');
+		if (!emit) throw new Error('XML NFC-e não possui emitente.');
 
 		return {
+			...(dest
+				? {
+						recipient: {
+							name: text(dest, 'xNome'),
+							id:
+								text(dest, 'CPF') ||
+								text(dest, 'CNPJ') ||
+								text(dest, 'idEstrangeiro'),
+							idType: text(dest, 'CPF')
+								? 'CPF'
+								: text(dest, 'CNPJ')
+									? 'CNPJ'
+									: 'Id. Estrangeiro',
+							address: ['xLgr', 'nro', 'xBairro', 'xMun', 'UF', 'CEP']
+								.map(key => text(dest, key))
+								.filter(Boolean)
+								.join(', '),
+						},
+					}
+				: {}),
+			discount: totals ? text(totals, 'vDesc') : '',
+			freight: totals ? text(totals, 'vFrete') : '',
+			insurance: totals ? text(totals, 'vSeg') : '',
+			otherCharges: totals ? text(totals, 'vOutro') : '',
+			estimatedTaxes: totals ? text(totals, 'vTotTrib') : '',
+			change: text(infNFe, 'vTroco'),
+			additionalInfo: [text(infNFe, 'infAdFisco'), text(infNFe, 'infCpl')]
+				.filter(Boolean)
+				.join('\n'),
+			consultationUrl: text(document, 'urlChave'),
 			accessKey,
 			authorizationDate,
 			contingency: text(infNFe, 'tpEmis') === '9',
 			emit: {
-				city: text(infNFe, 'xMun'),
-				cnpj: text(infNFe, 'CNPJ'),
-				ie: text(infNFe, 'IE') || null,
-				name: text(infNFe, 'xNome'),
-				neighborhood: text(infNFe, 'xBairro'),
-				number: text(infNFe, 'nro'),
-				state: text(infNFe, 'UF'),
-				street: text(infNFe, 'xLgr'),
-				tradeName: text(infNFe, 'xFant') || null,
-				zipCode: text(infNFe, 'CEP'),
+				city: text(emit, 'xMun'),
+				cnpj: text(emit, 'CNPJ'),
+				ie: text(emit, 'IE') || null,
+				name: text(emit, 'xNome'),
+				neighborhood: text(emit, 'xBairro'),
+				number: text(emit, 'nro'),
+				state: text(emit, 'UF'),
+				street: text(emit, 'xLgr'),
+				tradeName: text(emit, 'xFant') || null,
+				zipCode: text(emit, 'CEP'),
 			},
 			environment,
 			fiscalNumber: text(infNFe, 'nNF'),
@@ -52,6 +86,8 @@ export class DanfeNfceXmlParserService {
 				type: paymentTypeLabel(text(payment, 'tPag')),
 			})),
 			products: elements(infNFe, 'det').map(item => ({
+				code: text(item, 'cProd'),
+				unit: text(item, 'uCom'),
 				name: text(item, 'xProd'),
 				quantity: text(item, 'qCom'),
 				total: text(item, 'vProd'),

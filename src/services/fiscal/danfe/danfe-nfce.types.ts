@@ -1,3 +1,4 @@
+import type { FiscalReceiptData } from '@delivery-cruzeiro/types';
 export interface DanfeNfceProduct {
 	name: string;
 	quantity: string;
@@ -5,7 +6,7 @@ export interface DanfeNfceProduct {
 	unitValue: string;
 }
 
-export interface DanfeNfceData {
+export interface DanfeNfceData extends FiscalReceiptData {
 	accessKey: string;
 	authorizationDate: string | null;
 	contingency: boolean;
@@ -37,6 +38,7 @@ export interface DanfeNfceData {
 }
 
 export interface DanfeNfcePrintPayload {
+	data: DanfeNfceData;
 	accessKey: string;
 	columns: 48;
 	contentBase64: string;

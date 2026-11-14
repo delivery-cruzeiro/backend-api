@@ -29,6 +29,7 @@ function serialize(record: PrinterConfigurationRecord): PrinterConfiguration {
 	const { categories, subcategories, ...printer } = record;
 	return {
 		...printer,
+		fiscalLayout: printer.fiscalLayout as PrinterConfiguration['fiscalLayout'],
 		receiptLayout: printer.receiptLayout as PrinterConfiguration['receiptLayout'],
 		receiptSections: printer.receiptSections as PrinterConfiguration['receiptSections'],
 		lastKnownStatus: printer.lastKnownStatus as PrinterConfiguration['lastKnownStatus'],

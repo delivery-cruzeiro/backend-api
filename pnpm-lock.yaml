@@ -21,8 +21,8 @@ importers:
   .:
     dependencies:
       '@delivery-cruzeiro/types':
-        specifier: file:vendor\delivery-cruzeiro-types-1.4.10.tgz
-        version: file:vendor/delivery-cruzeiro-types-1.4.10.tgz
+        specifier: file:vendor/delivery-cruzeiro-types-1.4.11.tgz
+        version: file:vendor/delivery-cruzeiro-types-1.4.11.tgz
       '@fastify/cors':
         specifier: ^10.0.1
         version: 10.1.0
@@ -315,9 +315,9 @@ packages:
       conventional-commits-parser:
         optional: true
 
-  '@delivery-cruzeiro/types@file:vendor/delivery-cruzeiro-types-1.4.10.tgz':
-    resolution: {integrity: sha512-dul+IHy5jUzZH04SX6jYHFC0btS5QMBF/sM+nmwswWxRk/8LOGG/pWpAirDY97T09U9aYqymGd+w0w41IkLf4w==, tarball: file:vendor/delivery-cruzeiro-types-1.4.10.tgz}
-    version: 1.4.10
+  '@delivery-cruzeiro/types@file:vendor/delivery-cruzeiro-types-1.4.11.tgz':
+    resolution: {integrity: sha512-xNjbL1T+srPMdD/Fb+lA9Q8eJQMMpsowK+4uJbTA4KKrW7GkN6SZUlYvtyIgfQwr+u4ZTSJfQ5kvx/HGY7KALg==, tarball: file:vendor/delivery-cruzeiro-types-1.4.11.tgz}
+    version: 1.4.11
     engines: {node: '>=22.0.0'}
 
   '@electric-sql/pglite-socket@0.1.3':
@@ -2986,7 +2986,7 @@ snapshots:
     optionalDependencies:
       conventional-commits-parser: 6.4.0
 
-  '@delivery-cruzeiro/types@file:vendor/delivery-cruzeiro-types-1.4.10.tgz':
+  '@delivery-cruzeiro/types@file:vendor/delivery-cruzeiro-types-1.4.11.tgz':
     dependencies:
       polygon-clipping: 0.15.7
       zod: 4.6.6

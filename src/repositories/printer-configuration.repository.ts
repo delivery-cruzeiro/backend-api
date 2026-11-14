@@ -10,6 +10,8 @@ import { prisma } from '../lib/prisma.js';
 
 export const printerConfigurationSelect = {
 	receiptLayout: true,
+	fiscalLayout: true,
+	isFiscal: true,
 	receiptSections: true,
 	transport: true,
 	windowsQueueId: true,
@@ -205,15 +207,34 @@ export class PrismaPrinterConfigurationRepository implements PrinterConfiguratio
 	}
 
 	update(id: string, data: UpdatePrinterConfigurationDTO) {
-		return this.database.printerConfiguration.update({
-			where: { id },
-			data: {
-				...data,
-				isPrimary: undefined,
-				windowsCapabilities:
-					data.windowsCapabilities === null ? Prisma.DbNull : data.windowsCapabilities,
-			},
-			select: printerConfigurationSelect,
+		return this.database.$transaction(async transaction => {
+			if (data.isFiscal === true) {
+				const selected = await transaction.printerConfiguration.findUniqueOrThrow({
+					where: { id },
+					select: { storeId: true },
+				});
+				// Serialize destination changes per store without changing order-primary routing.
+				await transaction.store.update({
+					where: { id: selected.storeId },
+					data: { updatedAt: new Date() },
+				});
+				await transaction.printerConfiguration.updateMany({
+					where: { storeId: selected.storeId, isFiscal: true, id: { not: id } },
+					data: { isFiscal: false },
+				});
+			}
+			return transaction.printerConfiguration.update({
+				where: { id },
+				data: {
+					...data,
+					isPrimary: undefined,
+					windowsCapabilities:
+						data.windowsCapabilities === null
+							? Prisma.DbNull
+							: data.windowsCapabilities,
+				},
+				select: printerConfigurationSelect,
+			});
 		});
 	}
 

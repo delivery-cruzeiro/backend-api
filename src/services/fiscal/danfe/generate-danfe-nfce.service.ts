@@ -19,6 +19,7 @@ export class GenerateDanfeNfceService {
 		const escpos = this.escposBuilder.execute(data);
 
 		return {
+			data,
 			accessKey: data.accessKey,
 			columns: 48,
 			contentBase64: Buffer.from(escpos).toString('base64'),

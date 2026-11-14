@@ -29,6 +29,7 @@ const nfceXml = `
     </emit>
     <det nItem="1">
       <prod>
+        <cProd>PASTEL01</cProd><uCom>UN</uCom>
         <xProd>Pastel de queijo</xProd>
         <qCom>2.0000</qCom>
         <vUnCom>8.50</vUnCom>
@@ -89,6 +90,14 @@ describe('DANFE NFC-e', () => {
 		expect(printable).toContain('DANFE NFC-e');
 		expect(printable).toContain('Pastel de queijo');
 		expect(printable).toContain('Protocolo 123456789');
+		expect(result.data).toMatchObject({
+			accessKey: result.accessKey,
+			qrCodeUrl: result.qrCodeUrl,
+			protocol: '123456789',
+		});
+		expect(printable.replace(/\r?\n/g, '')).toContain(
+			result.accessKey.replace(/(\d{4})(?=\d)/g, '$1 ')
+		);
 	});
 
 	it('bloqueia a impressão de XML sem o QR Code original', () => {
@@ -97,5 +106,32 @@ describe('DANFE NFC-e', () => {
 				xml: nfceXml.replace(/<infNFeSupl>.*<\/infNFeSupl>/, ''),
 			})
 		).toThrow('O XML da NFC-e não contém o QR Code.');
+	});
+	it('preserva consumidor, acréscimos e mensagens sem confundir dados do emitente', () => {
+		const xml = nfceXml
+			.replace(
+				'<det nItem="1">',
+				'<dest><CPF>12345678901</CPF><xNome>Consumidor</xNome><enderDest><xLgr>Rua destino</xLgr><nro>10</nro><xMun>Outra cidade</xMun><UF>PE</UF></enderDest></dest><det nItem="1">'
+			)
+			.replace(
+				'<vNF>17.00</vNF>',
+				'<vFrete>2.00</vFrete><vSeg>1.00</vSeg><vOutro>0.50</vOutro><vDesc>0.25</vDesc><vNF>20.25</vNF>'
+			)
+			.replace(
+				'</infNFe>',
+				'<infAdic><infAdFisco>Mensagem fiscal</infAdFisco><infCpl>Complemento</infCpl></infAdic></infNFe>'
+			);
+		const { data } = new GenerateDanfeNfceService().execute({ xml });
+		expect(data).toMatchObject({
+			recipient: { id: '12345678901', idType: 'CPF', name: 'Consumidor' },
+			freight: '2.00',
+			insurance: '1.00',
+			otherCharges: '0.50',
+			discount: '0.25',
+			total: '20.25',
+			additionalInfo: 'Mensagem fiscal\nComplemento',
+			emit: { name: 'Pastel do Cruzeiro LTDA', state: 'PB' },
+		});
+		expect(data.products[0]).toMatchObject({ code: 'PASTEL01', unit: 'UN' });
 	});
 });
